@@ -3,7 +3,7 @@
    Program:    match
    File:       match.c
    
-   Version:    V1.2
+   Version:    V1.3
    Date:       16.04.21
    Function:   Match 2 distance matrices as created by surface
    
@@ -20,8 +20,8 @@
    else breaks this code, I don't want to be blamed for code that does not
    work! The code may not be sold commercially without print permission 
    from the author, although it may be given away free with commercial 
-   products, providing it is made clear that this program is free and that 
-   the source code is provided with the program.
+   products, providing it is made clear that this program is free and 
+   that the source code is provided with the program.
 
 **************************************************************************
 
@@ -46,6 +46,7 @@
    V1.1  16.04.21 Cleaned up for modern compilers and BiopLib2
    V1.2  16.04.21 Made inversion of one pattern an option (instead of
                   always doing it)
+   V1.3  16.04.21 Now uses our standard way of parsing the command line
 
 *************************************************************************/
 /* Includes
@@ -69,6 +70,7 @@
 #define PROP_AROM       2
 #define MAXITER       100
 #define MAXDIST        32
+#define MAXBUFF       160
 
 #define DEFBIN        1.0     /* Default distance bin size              */
 #define DEFACC       50.0     /* Default string match accuracy          */
@@ -96,39 +98,42 @@ typedef struct
         property[MAXPROP];
 }  ATOM;
 
-/*************************************************************************/
+/************************************************************************/
 /* Globals
 */
-REAL gBin      = DEFBIN,    /* Bin size for distance matrix              */
-     gAccuracy = DEFACC;    /* Percentage accuracy for string comparison */
+REAL gBin      = DEFBIN,    /* Bin size for distance matrix             */
+     gAccuracy = DEFACC;    /* Percentage accuracy for string comparison*/
 
-/*************************************************************************/
+/************************************************************************/
 /* Prototypes
 */
 int main(int argc, char **argv);
-BOOL ReadCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
-                 BOOL *invert);
+BOOL ParseCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
+                  char *outfile, BOOL *invert);
 void Usage(void);
-void MatchFiles(FILE *fp_pat, FILE *fp_struc, BOOL invert);
+void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert);
 DATA *ReadMatrix(FILE *fp, int *outnatom);
-ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom, BOOL SwapProp);
+ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom,
+                      BOOL SwapProp);
 int ConvDist(REAL dist);
 int GotAtom(ATOM *outdata, int natom, char *chain, int resnum, 
             char *insert);
 void FillAtom(ATOM *outdata, int natom, int pos, char *chain, int resnum, 
               char *insert, char *resnam, int DistRange, BOOL SwapProp);
-void DoLesk(int npat, DATA *pat, int nstruc, DATA *struc, BOOL invert);
+void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc,
+            BOOL invert);
 void KillAtom(char *chain, int resnum, char *insert, DATA *data, 
               int ndata);
 void TrimBitStrings(int npat, ATOM *pat, int nstruc, ATOM *struc);
-void PrintResults(int NPatAtom,   ATOM *PatAtom, 
+void PrintResults(FILE *out, int NPatAtom,   ATOM *PatAtom, 
                   int NStrucAtom, ATOM *StrucAtom);
-void PrintBestMatch(ATOM *PatAtom,   int PatIndex, 
+void PrintBestMatch(FILE *out,
+                    ATOM *PatAtom,   int PatIndex, 
                     ATOM *StrucAtom, int NStrucAtom);
 BOOL Compare(char *str1, char *str2, int len);
 REAL CalcScore(char *str1, char *str2, int len);
 
-/*************************************************************************/
+/************************************************************************/
 /*>int main(int argc, char **argv)
    -------------------------------
    Main program for matching output files from surface.
@@ -137,13 +142,15 @@ REAL CalcScore(char *str1, char *str2, int len);
 */
 int main(int argc, char **argv)
 {
-   char PatFile[160],
-        StrucFile[160];
-   FILE *fp_pat,
-        *fp_struc;
+   char PatFile[MAXBUFF],
+        StrucFile[MAXBUFF],
+        outfile[MAXBUFF];
+   FILE *fp_pat = NULL,
+        *fp_struc = NULL,
+        *out = stdout;
    BOOL invert;
 
-   if(ReadCmdLine(argc, argv, PatFile, StrucFile, &invert))
+   if(ParseCmdLine(argc, argv, PatFile, StrucFile, outfile, &invert))
    {
       if((fp_pat = fopen(PatFile,"r"))==NULL)
       {
@@ -155,8 +162,13 @@ int main(int argc, char **argv)
          fprintf(stderr,"Unable to open pattern file: %s\n",StrucFile);
          exit(1);
       }
+      if(outfile[0] && ((out = fopen(outfile, "w"))==NULL))
+      {
+         fprintf(stderr,"Unable to write outpuf file: %s\n",outfile);
+         exit(1);
+      }
 
-      MatchFiles(fp_pat, fp_struc, invert);
+      MatchFiles(out, fp_pat, fp_struc, invert);
    }
    else
    {
@@ -165,22 +177,28 @@ int main(int argc, char **argv)
    return(0);
 }
 
-/*************************************************************************/
-/*>BOOL ReadCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
-                    BOOL *invert)
-   -----------------------------------------------------------------------
+/************************************************************************/
+/*>BOOL ParseCmdLine(int argc, char **argv, char *PatFile, 
+                     char *StrucFile, char *outfile, BOOL *invert)
+   ---------------------------------------------------------------
    Read the command line
 
    18.11.93 Original   By: ACRM
    22.11.93 Added flags
    16.04.21 Added -i flag
+   16.04.21 Rewritten
 */
-BOOL ReadCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
-                 BOOL *invert)
+BOOL ParseCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
+                  char *outfile, BOOL *invert)
 {
-   argc--; argv++;
-
-   while(argc>2)
+   argc--;
+   argv++;
+   
+   PatFile[0]  = StrucFile[0] = outfile[0] = '\0';
+   *invert = FALSE;
+   
+   
+   while(argc)
    {
       if(argv[0][0] == '-')
       {
@@ -199,42 +217,61 @@ BOOL ReadCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
          case 'i': case 'I':
             *invert = TRUE;
             break;
-	 default:
+         default:
+            return(FALSE);
             break;
          }
+         argc--;
+         argv++;
       }
-      argc--; argv++;
+      else
+      {
+         /* Check that there are 2-3 arguments left                     */
+         if((argc < 2) || (argc > 3))
+            return(FALSE);
+
+         strcpy(PatFile,argv[0]);
+         argc--; argv++;
+         strcpy(StrucFile,argv[0]);
+         argc--; argv++;
+
+         if(argc)
+         {
+            strcpy(outfile, argv[0]);
+            argc--; argv++;
+         }
+      }
    }
-
-   if(argc != 2) return(FALSE);
-
-   strcpy(PatFile,argv[0]);
-   strcpy(StrucFile,argv[1]);
-
+   
    return(TRUE);
 }
 
-/*************************************************************************/
+
+
+
+
+/************************************************************************/
 /*>void Usage(void)
    ----------------
    Display a usage message
 
    18.11.93 Original   By: ACRM
    22.11.93 Added flag decriptions
-   16.04.21 V1.1, V1.2
+   16.04.21 V1.1, V1.2, V1.3
 */
 void Usage(void)
 {
-   fprintf(stderr,"\nMatch V1.2 (c) 1993-2021 SciTech Software / \
+   fprintf(stderr,"\nMatch V1.3 (c) 1993-2021 SciTech Software / \
 abYinformatics\n");
 
-   fprintf(stderr,"\nUsage: match [-i] [-d <bin>] [-a <accuracy>] \
-<pattern file> <structure file>\n");
-   fprintf(stderr,"       -i invert the properties in the pattern file\n");
-   fprintf(stderr,"       -d specifies distance bin size (default: %.1f)\n",
-           (double)DEFBIN);
-   fprintf(stderr,"       -a specifies percent dist string match accuracy \
-(default: %.1f)\n",(double)DEFACC);
+   fprintf(stderr,"\nUsage: match [-i][-d binsize][-a accuracy] \
+patternFile structureFile [outfile]\n");
+   fprintf(stderr,"       -i invert the properties in the pattern \
+file\n");
+   fprintf(stderr,"       -d specifies distance bin size \
+(default: %.1f)\n", (double)DEFBIN);
+   fprintf(stderr,"       -a specifies percent dist string match \
+accuracy (default: %.1f)\n", (double)DEFACC);
    fprintf(stderr,"\nFind potential matches for a pattern in a structure \
 using Lesk's method\n");
    fprintf(stderr,"The input files are generated by `surface`\n");
@@ -242,12 +279,12 @@ using Lesk's method\n");
 residues\n\n");
 }
 
-/*************************************************************************/
-/*>void MatchFiles(FILE *fp_pat, FILE *fp_struc, BOOL invert)
-   ----------------------------------------------------------
+/************************************************************************/
+/*>void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert)
+   ---------------------------------------------------------------------
    18.11.93 Original   By: ACRM
 */
-void MatchFiles(FILE *fp_pat, FILE *fp_struc, BOOL invert)
+void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert)
 {
    DATA *pat,
         *struc;
@@ -257,13 +294,14 @@ void MatchFiles(FILE *fp_pat, FILE *fp_struc, BOOL invert)
    pat   = ReadMatrix(fp_pat,   &npat);
    struc = ReadMatrix(fp_struc, &nstruc);
 
-   printf("%d records read from pattern; %d records read from structure\n",
-          npat, nstruc);
+   fprintf(stderr, "%d records read from pattern; \
+%d records read from structure\n",
+           npat, nstruc);
 
-   DoLesk(npat, pat, nstruc, struc, invert);
+   DoLesk(out, npat, pat, nstruc, struc, invert);
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>ATOM *ReadMatrix(FILE *fp, int *natom)
    --------------------------------------
    Read the output from surface. Create an array of type ATOM which
@@ -278,21 +316,21 @@ DATA *ReadMatrix(FILE *fp, int *outnatom)
    int  maxrec   = 0,
         i        = 0;
    DATA *outdata = NULL;
-   char buffer[160];
+   char buffer[MAXBUFF];
 
    *outnatom = 0;
 
-   /* Scan the file to see how long it is                                */
-   while(fgets(buffer,160,fp)) maxrec++;
+   /* Scan the file to see how long it is                               */
+   while(fgets(buffer,MAXBUFF-1,fp)) maxrec++;
    rewind(fp);
 
-   /* Allocate this much space                                           */
+   /* Allocate this much space                                          */
    if((outdata = malloc(maxrec * sizeof(DATA)))==NULL)
       return(NULL);
 
-   /* Now read the file again, filling in data                           */
+   /* Now read the file again, filling in data                          */
    i=0;
-   while(fgets(buffer,160,fp))
+   while(fgets(buffer,MAXBUFF-1,fp))
    {
       char resnam1[8], resnam2[8],
            chain1[8],  chain2[8],
@@ -328,7 +366,7 @@ DATA *ReadMatrix(FILE *fp, int *outnatom)
    return(outdata);
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom, 
                          BOOL SwapProp)
    -----------------------------------------------------------
@@ -341,32 +379,35 @@ ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom, BOOL SwapProp)
         pos;
    ATOM *outatom;
 
-   /* Allocate memory for the output atom array                          */
+   /* Allocate memory for the output atom array                         */
    if((outatom = (ATOM *)malloc(ndata * sizeof(ATOM))) == NULL)
       return(NULL);
 
    for(i=0; i<ndata; i++)
    {
-      /* Skip this record if the dead flag is set                        */
+      /* Skip this record if the dead flag is set                       */
       if(data[i].dead) continue;
 
-      /* See if we've got a record for the first residue                 */
+      /* See if we've got a record for the first residue                */
       pos = GotAtom(outatom, natom, data[i].chain[0], data[i].resnum[0],
                     data[i].insert[0]);
       if(pos == (-1)) pos = natom++;
 
-      /* Fill this into the data array                                   */
-      FillAtom(outatom, natom, pos, data[i].chain[0], data[i].resnum[0],
-               data[i].insert[0], data[i].resnam[0], data[i].dist, SwapProp);
+      /* Fill this into the data array                                  */
+      FillAtom(outatom, natom, pos,
+               data[i].chain[0],  data[i].resnum[0],
+               data[i].insert[0], data[i].resnam[0], data[i].dist,
+               SwapProp);
 
-      /* See if we've got a record for the second residue                */
+      /* See if we've got a record for the second residue               */
       pos = GotAtom(outatom, natom, data[i].chain[1], data[i].resnum[1],
                     data[i].insert[1]);
       if(pos == (-1)) pos = natom++;
 
-      /* Fill this into the data array                                   */
+      /* Fill this into the data array                                  */
       FillAtom(outatom, natom, pos, data[i].chain[1], data[i].resnum[1],
-               data[i].insert[1], data[i].resnam[1], data[i].dist, SwapProp);
+               data[i].insert[1], data[i].resnam[1], data[i].dist,
+               SwapProp);
    }
 
    *outnatom = natom;
@@ -374,7 +415,7 @@ ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom, BOOL SwapProp)
    return(outatom);
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>int ConvDist(REAL dist)
    -----------------------
    Converts a distance (REAL) to an integer bin number < MAXDIST. The bin
@@ -393,7 +434,7 @@ int ConvDist(REAL dist)
    return(idist);
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>int GotAtom(ATOM *outdata, int natom, char *chain, int resnum, 
                char *insert)
    --------------------------------------------------------------
@@ -419,7 +460,7 @@ int GotAtom(ATOM *outdata, int natom, char *chain, int resnum,
    return(-1);
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>void FillAtom(ATOM *outdata, int natom, int pos, char *chain, 
                  int resnum, char *insert, char *resnam, int DistRange,
                  BOOL SwapProp)
@@ -439,40 +480,42 @@ void FillAtom(ATOM *outdata, int natom, int pos, char *chain, int resnum,
 
    if(pos == natom-1)
    {
-      /* A new residue; fill in all data                                 */
+      /* A new residue; fill in all data                                */
       outdata[pos].resnum = resnum;
       strcpy(outdata[pos].chain,  chain);
       strcpy(outdata[pos].insert, insert);
       strcpy(outdata[pos].resnam, resnam);
 
-      /* Clear all distance and property flags                           */
+      /* Clear all distance and property flags                          */
       for(i=0; i<MAXPROP; i++) outdata[pos].property[i] = '0';
       outdata[pos].property[MAXPROP-1] = '\0';
       for(i=0; i<MAXDIST; i++) outdata[pos].dist[i]     = '0';
       outdata[pos].dist[MAXDIST-1] = '\0';
 
-      /* Set the property flags for this residue                         */
+      /* Set the property flags for this residue                        */
       if(!strncmp(resnam,"LYS",3) || !strncmp(resnam,"ARG",3))
-         outdata[pos].property[SwapProp?PROP_NEGATIVE:PROP_POSITIVE] = '1';
+         outdata[pos].property[SwapProp?PROP_NEGATIVE:PROP_POSITIVE]
+            = '1';
       if(!strncmp(resnam,"GLU",3) || 
          !strncmp(resnam,"ASP",3) ||
          !strncmp(resnam,"  A",3) ||
          !strncmp(resnam,"  T",3) ||
          !strncmp(resnam,"  C",3) ||
          !strncmp(resnam,"  G",3))
-         outdata[pos].property[SwapProp?PROP_POSITIVE:PROP_NEGATIVE] = '1';
+         outdata[pos].property[SwapProp?PROP_POSITIVE:PROP_NEGATIVE]
+            = '1';
       if(!strncmp(resnam,"TYR",3) || 
          !strncmp(resnam,"PHE",3) ||
          !strncmp(resnam,"TRP",3))
          outdata[pos].property[PROP_AROM] = '1';
    }
 
-   /* Now set the distance flag                                          */
+   /* Now set the distance flag                                         */
    outdata[pos].dist[DistRange] = '1';
 }
 
-/*************************************************************************/
-/*>void DoLesk(int npat, DATA *pat, int nstruc, DATA *struc)
+/************************************************************************/
+/*>void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc)
    ---------------------------------------------------------
    Does the actual Lesk pattern matching algorithm (with some 
    modifications).
@@ -481,7 +524,8 @@ void FillAtom(ATOM *outdata, int natom, int pos, char *chain, int resnum,
    21.11.93 Added property comparison and printing of results :-)
    16.04.21 Added invert parameter instead of always inverting the pattern
 */
-void DoLesk(int npat, DATA *pat, int nstruc, DATA *struc, BOOL invert)
+void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc,
+            BOOL invert)
 {
    ATOM *PatAtom,
         *StrucAtom;
@@ -493,38 +537,38 @@ void DoLesk(int npat, DATA *pat, int nstruc, DATA *struc, BOOL invert)
    
    for(i=0; i<MAXITER; i++)
    {
-      /* Create the bit strings for the atoms from the data arrays       */
+      /* Create the bit strings for the atoms from the data arrays      */
       PatAtom   = CreateAtomArray(pat,   npat,   &NPatAtom,   invert);
       StrucAtom = CreateAtomArray(struc, nstruc, &NStrucAtom, FALSE);
 
-      /* Print information on remaining atoms                            */
-      printf("Iteration %d: %d pattern atoms and %d structure atoms \
-remain\n",i,NPatAtom,NStrucAtom);
+      /* Print information on remaining atoms                           */
+      fprintf(stderr, "Iteration %d: %d pattern atoms and %d structure \
+atoms remain\n",i,NPatAtom,NStrucAtom);
 
       /* Remove any distance flags from the bit strings which are 
          never seen in the other structure
       */
       TrimBitStrings(NPatAtom, PatAtom, NStrucAtom, StrucAtom);
 
-      /* Exit if we've converged                                         */
+      /* Exit if we've converged                                        */
       if(NPatAtom == PrevPatAtoms && NStrucAtom == PrevStrucAtoms)
          break;
       PrevPatAtoms   = NPatAtom;
       PrevStrucAtoms = NStrucAtom;
          
 #ifdef DEBUG
-      printf("\nPattern atoms are:\n");
+      fprintf(stderr, "\nPattern atoms are:\n");
       for(j=0;j<NPatAtom;j++)
       {
-         printf("Property: %s; Distance: %s\n",
-                PatAtom[j].property, PatAtom[j].dist);
+         fprintf(stderr, "Property: %s; Distance: %s\n",
+                 PatAtom[j].property, PatAtom[j].dist);
       }
 
-      printf("\nStructure atoms are:\n");
+      fprintf(stderr, "\nStructure atoms are:\n");
       for(j=0;j<NStrucAtom;j++)
       {
-         printf("Property: %s; Distance: %s\n",
-                StrucAtom[j].property, StrucAtom[j].dist);
+         fprintf(stderr, "Property: %s; Distance: %s\n",
+                 StrucAtom[j].property, StrucAtom[j].dist);
       }
 #endif      
 
@@ -537,7 +581,8 @@ remain\n",i,NPatAtom,NStrucAtom);
 
          for(k=0; k<NPatAtom; k++)
          {
-	    if(!strncmp(StrucAtom[j].property,PatAtom[k].property,MAXPROP))
+	    if(!strncmp(StrucAtom[j].property,
+                        PatAtom[k].property, MAXPROP))
 	    {
 	       if(!Compare(StrucAtom[j].dist,PatAtom[k].dist,MAXDIST))
 	       {
@@ -551,17 +596,17 @@ remain\n",i,NPatAtom,NStrucAtom);
 	 {
             KillAtom(StrucAtom[j].chain, StrucAtom[j].resnum, 
                      StrucAtom[j].insert, struc, nstruc);
-	    printf("Structure atom: %s %c%d%c killed\n",
-		   StrucAtom[j].resnam, StrucAtom[j].chain[0],
-		   StrucAtom[j].resnum, StrucAtom[j].insert[0]);
+	    fprintf(stderr, "Structure atom: %s %c%d%c killed\n",
+                    StrucAtom[j].resnam, StrucAtom[j].chain[0],
+                    StrucAtom[j].resnum, StrucAtom[j].insert[0]);
          }
       }
    }
 
-   PrintResults(NPatAtom, PatAtom, NStrucAtom, StrucAtom);
+   PrintResults(out, NPatAtom, PatAtom, NStrucAtom, StrucAtom);
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>void KillAtom(char *chain, int resnum, char *insert, 
                  DATA *struc, int nstruc)
    ----------------------------------------------------
@@ -588,7 +633,7 @@ void KillAtom(char *chain, int resnum, char *insert, DATA *data,
    }
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>void TrimBitStrings(int npat, ATOM *pat, int nstruc, ATOM *struc)
    -----------------------------------------------------------------
    Search the bit strings of the pattern and remove any distance flags
@@ -602,12 +647,12 @@ void TrimBitStrings(int npat, ATOM *pat, int nstruc, ATOM *struc)
    BOOL PatHit,
         StrucHit;
 
-   /* For each distance in the distance bit string                       */
+   /* For each distance in the distance bit string                      */
    for(i=0; i<MAXDIST; i++)
    {
       PatHit = StrucHit = FALSE;
 
-      /* Search the pattern array for this distance being flagged        */
+      /* Search the pattern array for this distance being flagged       */
       for(j=0; j<npat; j++)
       {
          if(pat[j].dist[i] == '1')
@@ -617,7 +662,7 @@ void TrimBitStrings(int npat, ATOM *pat, int nstruc, ATOM *struc)
          }
       }
 
-      /* Search the structure array for this distance being flagged      */
+      /* Search the structure array for this distance being flagged     */
       for(j=0; j<nstruc; j++)
       {
          if(struc[j].dist[i] == '1')
@@ -651,8 +696,9 @@ void TrimBitStrings(int npat, ATOM *pat, int nstruc, ATOM *struc)
    }
 }
 
-/*************************************************************************/
-/*>void PrintResults(int NPatAtom,   ATOM *PatAtom, 
+/************************************************************************/
+/*>void PrintResults(FILE *out,
+                     int NPatAtom,   ATOM *PatAtom, 
                      int NStrucAtom, ATOM *StrucAtom)
    --------------------------------------------------
    Run through the pattern atoms and, for each, print the best match 
@@ -660,24 +706,27 @@ void TrimBitStrings(int npat, ATOM *pat, int nstruc, ATOM *struc)
 
    22.11.93 Original   By: ACRM
 */
-void PrintResults(int NPatAtom,   ATOM *PatAtom, 
+void PrintResults(FILE *out,
+                  int NPatAtom,   ATOM *PatAtom, 
                   int NStrucAtom, ATOM *StrucAtom)
 {
    int i;
 
    for(i=0; i<NPatAtom; i++)
-      PrintBestMatch(PatAtom, i, StrucAtom, NStrucAtom);
+      PrintBestMatch(out, PatAtom, i, StrucAtom, NStrucAtom);
 }
 
-/*************************************************************************/
-/*>void PrintBestMatch(ATOM *PatAtom,   int PatIndex, 
+/************************************************************************/
+/*>void PrintBestMatch(FILE *out,
+                       ATOM *PatAtom,   int PatIndex, 
                        ATOM *StrucAtom, int NStrucAtom)
    ----------------------------------------------------
    Print the best macth from the structure for this pattern atom
 
    22.11.93 Original   By: ACRM
 */
-void PrintBestMatch(ATOM *PatAtom,   int PatIndex, 
+void PrintBestMatch(FILE *out,
+                    ATOM *PatAtom,   int PatIndex, 
                     ATOM *StrucAtom, int NStrucAtom)
 {
    int  j,
@@ -687,10 +736,13 @@ void PrintBestMatch(ATOM *PatAtom,   int PatIndex,
 
    for(j=0; j<NStrucAtom; j++)
    {
-      if(!strncmp(PatAtom[PatIndex].property,StrucAtom[j].property,MAXPROP) &&
-         !Compare(PatAtom[PatIndex].dist,    StrucAtom[j].dist,    MAXDIST))
+      if(!strncmp(PatAtom[PatIndex].property,
+                  StrucAtom[j].property, MAXPROP) &&
+         !Compare(PatAtom[PatIndex].dist,
+                  StrucAtom[j].dist,     MAXDIST))
       {
-         score = CalcScore(PatAtom[PatIndex].dist, StrucAtom[j].dist, MAXDIST);
+         score = CalcScore(PatAtom[PatIndex].dist, StrucAtom[j].dist,
+                           MAXDIST);
          if(score > BestScore)
          {
             BestScore = score;
@@ -702,15 +754,15 @@ void PrintBestMatch(ATOM *PatAtom,   int PatIndex,
    /* If we got a best score, print it out                              */
    if(best != (-1))
    {
-      printf("Pattern: %s %c%d%c matches Structure: %s %c%d%c\n",
-             PatAtom[PatIndex].resnam, PatAtom[PatIndex].chain[0], 
-             PatAtom[PatIndex].resnum, PatAtom[PatIndex].insert[0],
-             StrucAtom[best].resnam, StrucAtom[best].chain[0], 
-             StrucAtom[best].resnum, StrucAtom[best].insert[0]);
+      fprintf(out, "Pattern: %s %c%d%c matches Structure: %s %c%d%c\n",
+              PatAtom[PatIndex].resnam, PatAtom[PatIndex].chain[0], 
+              PatAtom[PatIndex].resnum, PatAtom[PatIndex].insert[0],
+              StrucAtom[best].resnam, StrucAtom[best].chain[0], 
+              StrucAtom[best].resnum, StrucAtom[best].insert[0]);
    }
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>BOOL Compare(char *str1, chsr *str2, int len)
    ---------------------------------------------
    Compares two bitstrings (1/0 character strings) using a 75% identity
@@ -744,7 +796,7 @@ BOOL Compare(char *str1, char *str2, int len)
    return(TRUE);
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>REAL CalcScore(char *str1, char *str2, int len)
    -----------------------------------------------
    Calculate the score for this match. Much the same as compare, but 

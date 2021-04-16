@@ -93,8 +93,6 @@
 int main(int argc, char **argv);
 BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
                   char *limitfile, BOOL *doSurface, BOOL *doMatrix);
-BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile, 
-                 BOOL *DoSurface);
 PDB *FindSurfaceAtoms(PDB *pdb);
 PDB *FindAtomsOfInterest(PDB *surface);
 void DoDistMatrix(FILE *out, PDB *interest);
@@ -172,7 +170,11 @@ int main(int argc, char **argv)
    return(0);
 }
 
-
+/*
+   18.11.93 Original   By: ACRM
+   19.11.93 Added doSurface parameter and flag
+   16.04.21 Rewritten
+*/
 BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
                   char *limitfile, BOOL *doSurface, BOOL *doMatrix)
 {
