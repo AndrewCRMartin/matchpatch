@@ -4,21 +4,13 @@
    Program:    surface
    File:       surface.c
    
-   Version:    V1.1
-   Date:       19.05.94
+   Version:    V1.2
+   Date:       16.04.21
    Function:   To create a distance map of surface features
    
-   Copyright:  (c) SciTech Software 1993
-   Author:     Dr. Andrew C. R. Martin
-   Address:    SciTech Software
-               23, Stag Leys,
-               Ashtead,
-               Surrey,
-               KT21 2TD.
-   Phone:      +44 (0372) 275775
-   EMail:      UUCP:  cbmehq!cbmuk!scitec!amartin
-                      amartin@scitec.adsp.sub.org
-               JANET: andrew@uk.ac.ox.biop
+   Copyright:  (c) SciTech Software / abYinformatics 1993-2021
+   Author:     Prof. Andrew C. R. Martin
+   EMail:      andrew@bioinf.org.uk
                
 **************************************************************************
 
@@ -58,6 +50,7 @@
    =================
    V1.0  22.11.93 Original
    V1.1  19.05.94 Added Phosphate for DNA
+   V1.2  16.04.21 Cleaned up for modern compilers and BiopLib2
 
 *************************************************************************/
 /* Includes
@@ -154,6 +147,8 @@ int main(int argc, char **argv)
          Usage();
       }
    }
+
+   return(0);
 }
 
 /*************************************************************************/
@@ -180,6 +175,9 @@ BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
 
    argc--; argv++;
 
+   if(!strcmp(argv[0], "-h"))
+      return(FALSE);
+   
    while(argc>1)
    {
       if(argv[0][0] == '-')
@@ -194,7 +192,7 @@ BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
             *DoSurface = FALSE;
             break;
 	 default:
-            break;
+            return(FALSE);
          }
       }
       argc--; argv++;
@@ -229,7 +227,7 @@ PDB *OpenAndReadPDB(char *file, FILE *Msgfp)
    }
    else
    {
-      pdb = ReadPDB(fp, &natoms);
+      pdb = blReadPDB(fp, &natoms);
       if(pdb == NULL || natoms == 0)
       {
          if(Msgfp!=NULL) 
@@ -266,7 +264,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
         y,
         z;
 
-   fprintf(stderr,"Finding surface atoms using %lf Angstrom grid\n",
+   fprintf(stderr,"Finding surface atoms using %f Angstrom grid\n",
            (double)GRID);
 
    /* Find size of coordinate box and set occ's to zero to use as flag  */
@@ -292,7 +290,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
    ymax += BOXSIZE;
    zmax += BOXSIZE;
 
-   fprintf(stderr,"Dimensions of box are: %lf %lf %lf\n\n",
+   fprintf(stderr,"Dimensions of box are: %f %f %f\n\n",
            (double)(xmax-xmin),(double)(ymax-ymin),(double)(zmax-zmin));
 
    /* For each point on the x-y plane, search along the z axis           */
@@ -460,7 +458,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
             return(NULL);
          }
 
-         CopyPDB(q,p);
+         blCopyPDB(q,p);
       }
    }
 
@@ -603,7 +601,7 @@ PDB *FindAtomsOfInterest(PDB *surface)
                return(NULL);
             }
 
-            CopyPDB(CurrInt,p);
+            blCopyPDB(CurrInt,p);
             /* Use occ to store a count of number of times this residue
                has been found.
             */
@@ -632,7 +630,7 @@ void DoDistMatrix(PDB *interest)
    {
       for(q=p->next; q!=NULL; NEXT(q))
       {
-         printf("%s %c%4d%c %s %c%4d%c %8.3lf\n",
+         printf("%s %c%4d%c %s %c%4d%c %8.3f\n",
                 p->resnam,p->chain[0],p->resnum,p->insert[0],
                 q->resnam,q->chain[0],q->resnum,q->insert[0],
                 DIST(p,q));
@@ -647,19 +645,20 @@ void DoDistMatrix(PDB *interest)
 
    18.11.93 Original   By: ACRM
    19.11.93 Added -s flag
+   16.04.21 V1.2
 */
 void Usage(void)
 {
-   fprintf(stderr,"Usage: surface [-l <limits>] [-s] <file.pdb>\n");
+   fprintf(stderr,"\nsurface V1.2 (c) 1993-2021 SciTech Software / \
+abYinformatics\n");
+   fprintf(stderr,"\nUsage: surface [-l <limits>] [-s] <file.pdb>\n");
    fprintf(stderr,"       -l specify limits file\n");
    fprintf(stderr,"       -s assume all residues are surface\n");
-   fprintf(stderr,"Surface V1.1 19.05.93\n");
-   fprintf(stderr,"Search for surface charged and aromatic residues and \
-create a distance matrix\n");
+   fprintf(stderr,"\nSearch for surface charged and aromatic residues \
+and create a distance matrix\n");
    fprintf(stderr,"The limits file specifies ranges of amino acids to \
 be included\n");
-   fprintf(stderr,"Output is to stdout\n");
-
+   fprintf(stderr,"Output is to stdout\n\n");
 }
 
 /*************************************************************************/
@@ -723,14 +722,14 @@ PDB *SelectRanges(PDB *pdb, char *limitfile)
               insert[8];
          int  resnum;
 
-         ParseResSpec(spec1,chain,&resnum,insert);
+         blParseResSpec(spec1,chain,&resnum,insert);
          start[nrange].chain[0]  = chain[0];
          start[nrange].chain[1]  = '\0';
          start[nrange].insert[0] = insert[0];
          start[nrange].insert[1] = '\0';
          start[nrange].resnum    = resnum;
 
-         ParseResSpec(spec2,chain,&resnum,insert);
+         blParseResSpec(spec2,chain,&resnum,insert);
          stop[nrange].chain[0]   = chain[0];
          stop[nrange].chain[1]   = '\0';
          stop[nrange].insert[0]  = insert[0];
@@ -773,7 +772,7 @@ PDB *SelectRanges(PDB *pdb, char *limitfile)
 	    }
             else
 	    {
-               ALLOCNEXT(q,PDB)
+               ALLOCNEXT(q,PDB);
 	    }
 
             if(q==NULL)
@@ -784,7 +783,7 @@ Using all residues.\n");
                return(pdb);
 	      }
 
-            CopyPDB(q,p);
+            blCopyPDB(q,p);
 
             /* Break out of search through ranges                        */
             break;
