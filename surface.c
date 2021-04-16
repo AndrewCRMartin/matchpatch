@@ -4,7 +4,7 @@
    Program:    surface
    File:       surface.c
    
-   Version:    V1.2
+   Version:    V2.0
    Date:       16.04.21
    Function:   To create a distance map of surface features
    
@@ -51,6 +51,9 @@
    V1.0  22.11.93 Original
    V1.1  19.05.94 Added Phosphate for DNA
    V1.2  16.04.21 Cleaned up for modern compilers and BiopLib2
+   V2.0  16.04.21 Now just outputs the residues of interest with their
+                  properties rather than the distances. Modified to use
+                  standard BiopTools methods of I/O
 
 *************************************************************************/
 /* Includes
@@ -72,6 +75,7 @@
 #define GRID    1.0
 #define WATER   1.4
 #define WATERSQ (WATER * WATER)
+#define MAXBUFF 160
 
 #ifdef DEBUG
 #define D(BUG) fprintf(stderr,BUG)
@@ -83,21 +87,21 @@
 /* Globals
 */
 
-/*************************************************************************/
+/************************************************************************/
 /* Prototypes
 */
 int main(int argc, char **argv);
-BOOL Initialise(void);
+BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
+                  char *limitfile, BOOL *doSurface);
 BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile, 
                  BOOL *DoSurface);
-PDB *OpenAndReadPDB(char *file, FILE *Msgfp);
 PDB *FindSurfaceAtoms(PDB *pdb);
 PDB *FindAtomsOfInterest(PDB *surface);
-void DoDistMatrix(PDB *interest);
+void DoDistMatrix(FILE *out, PDB *interest);
 void Usage(void);
 PDB *SelectRanges(PDB *pdb, char *limitfile);
 
-/*************************************************************************/
+/************************************************************************/
 /*>int main(int argc, char **argv)
    -------------------------------
    Main program for creating distance matrix of surface charged residues.
@@ -111,67 +115,125 @@ int main(int argc, char **argv)
         *surface,
         *surf,
         *interest;
-   char pdbfile[160],
-        limitfile[160];
-   BOOL DoSurface;
+   char infile[MAXBUFF],
+        outfile[MAXBUFF],
+        limitfile[MAXBUFF];
+   BOOL doSurface = TRUE;
+   FILE *in  = stdin,
+        *out = stdout;
+   int  natoms;
+   
 
-   if(Initialise())
+   if(ParseCmdLine(argc, argv, infile, outfile, limitfile, &doSurface))
    {
-      if(ReadCmdLine(argc, argv, pdbfile, limitfile, &DoSurface))
+      if(blOpenStdFiles(infile, outfile, &in, &out))
       {
-         if((pdb = OpenAndReadPDB(pdbfile,stderr)) != NULL)
-	 {
-            if(DoSurface) surface = FindSurfaceAtoms(pdb);
+         if((pdb = blReadPDBAtoms(in, &natoms))!=NULL)
+         {
+            if(doSurface) surface = FindSurfaceAtoms(pdb);
             else          surface = pdb;
-
+         
             if(surface != NULL)
-	    {
+            {
                if(limitfile[0])
                   surf = SelectRanges(surface,limitfile);
                else
                   surf = surface;
-
+               
                if((interest = FindAtomsOfInterest(surf)) != NULL)
-	       {
+               {
 #ifdef DEBUG
                   fprintf(stderr,"\n\Interesting atom list\n");
                   WritePDB(stderr,interest);
 #endif
-                  DoDistMatrix(interest);
-	       }
-	    }
+                  DoDistMatrix(out, interest);
+               }
+            }
+         }
+         else
+         {
+            fprintf(stderr,"Warning: No atoms read from PDB file\n");
          }
       }
-      else
-      {
-         Usage();
-      }
+   }
+   else
+   {
+      Usage();
    }
 
    return(0);
 }
 
-/*************************************************************************/
-BOOL Initialise(void)
+
+BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
+                  char *limitfile, BOOL *doSurface)
 {
+   argc--;
+   argv++;
+   
+   infile[0]  = outfile[0] = limitfile[0] = '\0';
+   *doSurface = TRUE;
+   
+   
+   while(argc)
+   {
+      if(argv[0][0] == '-')
+      {
+         switch(argv[0][1])
+         {
+	 case 'l':
+            argc--; argv++;
+            strcpy(limitfile, argv[0]);
+            break;
+	 case 's':
+            *doSurface = FALSE;
+            break;
+         default:
+            return(FALSE);
+            break;
+         }
+         argc--;
+         argv++;
+      }
+      else
+      {
+         /* Check that there are no more than 2 arguments left          */
+         if(argc > 2)
+            return(FALSE);
+
+         if(argc)
+         {
+            strcpy(infile, argv[0]);
+            argc--; argv++;
+            if(argc)
+            {
+               strcpy(outfile, argv[0]);
+               argc--; argv++;
+            }
+         }
+      }
+   }
+   
    return(TRUE);
 }
 
-/*************************************************************************/
+
+
+/************************************************************************/
 /*>BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
-                    BOOL *DoSurface)
+                    BOOL *doSurface)
    -----------------------------------------------------------------------
    Read the command line
 
    18.11.93 Original   By: ACRM
-   19.11.93 Added DoSurface parameter and flag
+   19.11.93 Added doSurface parameter and flag
 */
 BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
-                 BOOL *DoSurface)
+                 BOOL *doSurface)
 {
    limitfile[0] = '\0';
 
-   *DoSurface = TRUE;
+   *doSurface = TRUE;
 
    argc--; argv++;
 
@@ -184,13 +246,6 @@ BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
       {
          switch(argv[0][1])
          {
-	 case 'l': case 'L':
-            argc--; argv++;
-            strcpy(limitfile,argv[0]);
-            break;
-	 case 's': case 'S':
-            *DoSurface = FALSE;
-            break;
 	 default:
             return(FALSE);
          }
@@ -204,43 +259,8 @@ BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
    return(TRUE);
 }
 
+
 /************************************************************************/
-/*>PDB *OpenAndReadPDB(char *file, FILE *Msgfp)
-   --------------------------------------------
-   Opens a PDB file specified by name and reads it with ReadPDB. Error
-   messages are sent to the specified file. If NULL, no messages will
-   be issued. Returns a pointer to the PDB linked list or NULL if failed.
-
-   10.10.93 Original    By: ACRM
-   11.10.93 Added legal NULL Msgfp
-*/
-PDB *OpenAndReadPDB(char *file, FILE *Msgfp)
-{
-   FILE *fp = NULL;
-   PDB  *pdb = NULL;
-   int  natoms;
-
-   if((fp=fopen(file,"r"))==NULL)
-   {
-      if(Msgfp!=NULL) 
-         fprintf(Msgfp,"Unable to open file: %s\n",file);
-   }
-   else
-   {
-      pdb = blReadPDB(fp, &natoms);
-      if(pdb == NULL || natoms == 0)
-      {
-         if(Msgfp!=NULL) 
-            fprintf(Msgfp,"No atoms read from file: %s\n",file);
-         if(pdb!=NULL) FREELIST(pdb,PDB);
-         pdb = NULL;
-      }
-      fclose(fp);
-   }
-   return(pdb);
-}
-
-/*************************************************************************/
 /*>PDB *FindSurfaceAtoms(PDB *pdb)
    -------------------------------
    Identifies surface atoms using a simple grid search along x, y and z
@@ -282,7 +302,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
       if(p->z > zmax) zmax = p->z;
    }
 
-   /* Modify these bounds by the box border size                         */
+   /* Modify these bounds by the box border size                        */
    xmin -= BOXSIZE;
    ymin -= BOXSIZE;
    zmin -= BOXSIZE;
@@ -293,7 +313,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
    fprintf(stderr,"Dimensions of box are: %f %f %f\n\n",
            (double)(xmax-xmin),(double)(ymax-ymin),(double)(zmax-zmin));
 
-   /* For each point on the x-y plane, search along the z axis           */
+   /* For each point on the x-y plane, search along the z axis          */
    fprintf(stderr,"Searching along z...\n");
    for(x=xmin; x<=xmax; x+=GRID)
    {
@@ -304,7 +324,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
          grid.x = x;
          grid.y = y;
 
-         /* Forwards on z                                                */
+         /* Forwards on z                                               */
          for(z=zmin; z<=zmax; z+=GRID)
          {
             BOOL GotHit=FALSE;
@@ -321,7 +341,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
             if(GotHit) break;
 	 }
 
-         /* Backwards on z                                               */
+         /* Backwards on z                                              */
          for(z=zmax; z>=zmin; z-=GRID)
          {
             BOOL GotHit=FALSE;
@@ -341,7 +361,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
    }
 
 
-   /* For each point on the x-z plane, search along the y axis           */
+   /* For each point on the x-z plane, search along the y axis          */
    fprintf(stderr,"Searching along y...\n");
    for(x=xmin; x<=xmax; x+=GRID)
    {
@@ -352,7 +372,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
          grid.x = x;
          grid.z = z;
 
-         /* Forwards on y                                                */
+         /* Forwards on y                                               */
          for(y=ymin; y<=ymax; y+=GRID)
          {
             BOOL GotHit=FALSE;
@@ -369,7 +389,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
             if(GotHit) break;
 	 }
 
-         /* Backwards on y                                               */
+         /* Backwards on y                                              */
          for(y=ymax; y>=zmin; y-=GRID)
          {
             BOOL GotHit=FALSE;
@@ -389,7 +409,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
    }
 
 
-   /* For each point on the y-z plane, search along the x axis           */
+   /* For each point on the y-z plane, search along the x axis          */
    fprintf(stderr,"Searching along x...\n");
    for(y=ymin; y<=ymax; y+=GRID)
    {
@@ -400,7 +420,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
          grid.z = z;
          grid.y = y;
 
-         /* Forwards on x                                                */
+         /* Forwards on x                                               */
          for(x=xmin; x<=xmax; x+=GRID)
          {
             BOOL GotHit=FALSE;
@@ -417,7 +437,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
             if(GotHit) break;
 	 }
 
-         /* Backwards on x                                               */
+         /* Backwards on x                                              */
          for(x=xmax; x>=xmin; x-=GRID)
          {
             BOOL GotHit=FALSE;
@@ -436,7 +456,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
       }
    }
 
-   /* Now copy the flagged atoms into an output linked list              */
+   /* Now copy the flagged atoms into an output linked list             */
    for(p=pdb; p!=NULL; NEXT(p))
    {
       if(p->occ != (REAL)0.0)
@@ -462,11 +482,11 @@ PDB *FindSurfaceAtoms(PDB *pdb)
       }
    }
 
-   /* And return the linked list of flagged atoms                        */
+   /* And return the linked list of flagged atoms                       */
    return(surface);
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>PDB *FindAtomsOfInterest(PDB *surface)
    --------------------------------------
    Searches a PDB linked list for all charged atoms and returns a PDB 
@@ -488,7 +508,7 @@ PDB *FindAtomsOfInterest(PDB *surface)
 
    fprintf(stderr,"Finding atoms of interest on the surface...\n");
 
-   /* We use occ as a flag to indicate interesting atoms                 */
+   /* We use occ as a flag to indicate interesting atoms                */
    D("Clearing occ flag\n");
    for(p=surface; p!=NULL; NEXT(p))
       p->occ = 0.0;
@@ -538,14 +558,14 @@ PDB *FindAtomsOfInterest(PDB *surface)
          p->occ = 1.0;
    }
 
-   /* Now we copy this list, but include only one entry for each residue */
+   /* Now we copy this list, but include only one entry for each residue*/
    for(p=surface; p!=NULL; NEXT(p))
    {
       if(p->occ != 0.0)
       {
          BOOL ResFound = FALSE;
 
-         /* See if this residue has been flagged already                 */
+         /* See if this residue has been flagged already                */
          if(interest != NULL)
          {
             D("Searching for this residue found already\n");
@@ -555,7 +575,7 @@ PDB *FindAtomsOfInterest(PDB *surface)
                   q->insert[0] == p->insert[0] &&
                   q->chain[0]  == p->chain[0])
                {
-                  /* Yes, it's been found before so shift CofG           */
+                  /* Yes, it's been found before so shift CofG          */
                   D("   YES: updating CofG\n");
 
                   q->x *= q->occ;
@@ -612,15 +632,15 @@ PDB *FindAtomsOfInterest(PDB *surface)
    return(interest);
 }
 
-/*************************************************************************/
-/*>void DoDistMatrix(PDB *interest)
+/************************************************************************/
+/*>void DoDistMatrix(FILE *out, PDB *interest)
    --------------------------------
    Calculate a distance matrix for all the atoms in the input PDB linked
    list. Print this to stdout.
 
    18.11.93 Original   By: ACRM
 */
-void DoDistMatrix(PDB *interest)
+void DoDistMatrix(FILE *out, PDB *interest)
 {
    PDB *p, *q;
 
@@ -630,38 +650,40 @@ void DoDistMatrix(PDB *interest)
    {
       for(q=p->next; q!=NULL; NEXT(q))
       {
-         printf("%s %c%4d%c %s %c%4d%c %8.3f\n",
-                p->resnam,p->chain[0],p->resnum,p->insert[0],
-                q->resnam,q->chain[0],q->resnum,q->insert[0],
-                DIST(p,q));
+         fprintf(out, "%s %c%4d%c %s %c%4d%c %8.3f\n",
+                 p->resnam,p->chain[0],p->resnum,p->insert[0],
+                 q->resnam,q->chain[0],q->resnum,q->insert[0],
+                 DIST(p,q));
       }
    }
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>void Usage(void)
    ----------------
    Display a usage message
 
    18.11.93 Original   By: ACRM
    19.11.93 Added -s flag
-   16.04.21 V1.2
+   16.04.21 V1.2, V2.0
 */
 void Usage(void)
 {
-   fprintf(stderr,"\nsurface V1.2 (c) 1993-2021 SciTech Software / \
+   fprintf(stderr,"\nsurface V2.0 (c) 1993-2021 SciTech Software / \
 abYinformatics\n");
-   fprintf(stderr,"\nUsage: surface [-l <limits>] [-s] <file.pdb>\n");
+   fprintf(stderr,"\nUsage: surface [-l limitsfile] [-s] [file.pdb \
+[file.out]]\n");
    fprintf(stderr,"       -l specify limits file\n");
    fprintf(stderr,"       -s assume all residues are surface\n");
    fprintf(stderr,"\nSearch for surface charged and aromatic residues \
 and create a distance matrix\n");
    fprintf(stderr,"The limits file specifies ranges of amino acids to \
 be included\n");
-   fprintf(stderr,"Output is to stdout\n\n");
+   fprintf(stderr,"Input/output is through stdin/stdout if not \
+specified\n\n");
 }
 
-/*************************************************************************/
+/************************************************************************/
 /*>PDB *SelectRanges(PDB *pdb, char *limitfile)
    --------------------------------------------
    Read the file specified by limitfile containing amino acid residue
@@ -682,24 +704,24 @@ PDB *SelectRanges(PDB *pdb, char *limitfile)
         *p,
         *q,
         *outpdb = NULL;
-   char buffer[160],
+   char buffer[MAXBUFF],
         spec1[16],
         spec2[16];
    int  nrange=0,
         j;
 
-   /* First read the range limits file                                   */
+   /* First read the range limits file                                  */
    if((fp=fopen(limitfile,"r"))==NULL)
    {
       fprintf(stderr,"Unable to read limits file (ignored).\n");
       return(pdb);
    }
 
-   /* Scan through to count ranges                                       */
-   while(fgets(buffer,160,fp)) nrange++;
+   /* Scan through to count ranges                                      */
+   while(fgets(buffer,MAXBUFF-1,fp)) nrange++;
    rewind(fp);
 
-   /* Allocate memory for the range arrays                               */
+   /* Allocate memory for the range arrays                              */
    if((start = (PDB *)malloc(nrange * sizeof(PDB))) == NULL)
    {
       fprintf(stderr,"No memory for limit range storage. Limits ignored\n");
@@ -712,9 +734,9 @@ PDB *SelectRanges(PDB *pdb, char *limitfile)
       return(pdb);
    }
 
-   /* Read the file again, storing ranges                                */
+   /* Read the file again, storing ranges                               */
    nrange = 0;
-   while(fgets(buffer,160,fp))
+   while(fgets(buffer,MAXBUFF-1,fp))
    {
       if(sscanf(buffer,"%s %s",spec1, spec2) == 2)
       {
@@ -747,14 +769,14 @@ PDB *SelectRanges(PDB *pdb, char *limitfile)
    */
    for(p=pdb; p!=NULL; NEXT(p))
    {
-      /* See if this record is in any of the ranges                      */
+      /* See if this record is in any of the ranges                     */
       for(j=0; j<nrange; j++)
       {
          if(p->chain[0] == start[j].chain[0] &&
             p->resnum   >= start[j].resnum   &&
             p->resnum   <= stop[j].resnum)
 	 {
-            /* Numbers and chain are OK, check for insert                */
+            /* Numbers and chain are OK, check for insert               */
             if(p->resnum == start[j].resnum  &&
                start[j].insert[0] != ' '     &&
                p->insert[0] < start[j].insert[0])
@@ -764,7 +786,7 @@ PDB *SelectRanges(PDB *pdb, char *limitfile)
                p->insert[0] > stop[j].insert[0])
                continue;
 
-            /* This one is within ranges, so create space and copy       */
+            /* This one is within ranges, so create space and copy      */
             if(outpdb==NULL)
 	    {
                INIT(outpdb,PDB);
@@ -785,13 +807,13 @@ Using all residues.\n");
 
             blCopyPDB(q,p);
 
-            /* Break out of search through ranges                        */
+            /* Break out of search through ranges                       */
             break;
          }
       }
    }
 
-   /* Free memory and return                                             */
+   /* Free memory and return                                            */
    if(start != NULL) free(start);
    if(stop  != NULL) free(stop);
 
