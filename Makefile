@@ -18,3 +18,6 @@ surface : surface.o
 clean : 
 	\rm *.o
 
+install :
+	mkdir -p $(HOME)/bin
+	cp match surface $(HOME)/bin
