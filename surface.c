@@ -92,14 +92,17 @@
 */
 int main(int argc, char **argv);
 BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
-                  char *limitfile, BOOL *doSurface);
+                  char *limitfile, BOOL *doSurface, BOOL *doMatrix);
 BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile, 
                  BOOL *DoSurface);
 PDB *FindSurfaceAtoms(PDB *pdb);
 PDB *FindAtomsOfInterest(PDB *surface);
 void DoDistMatrix(FILE *out, PDB *interest);
+void PrintInterestingResidues(FILE *out, PDB *interest);
 void Usage(void);
 PDB *SelectRanges(PDB *pdb, char *limitfile);
+void SetProperties(PDB *p, int *charge, int *aromatic, int *hydropathy);
+
 
 /************************************************************************/
 /*>int main(int argc, char **argv)
@@ -118,13 +121,15 @@ int main(int argc, char **argv)
    char infile[MAXBUFF],
         outfile[MAXBUFF],
         limitfile[MAXBUFF];
-   BOOL doSurface = TRUE;
+   BOOL doSurface = TRUE,
+        doMatrix  = FALSE;
    FILE *in  = stdin,
         *out = stdout;
    int  natoms;
    
 
-   if(ParseCmdLine(argc, argv, infile, outfile, limitfile, &doSurface))
+   if(ParseCmdLine(argc, argv, infile, outfile, limitfile, &doSurface,
+                   &doMatrix))
    {
       if(blOpenStdFiles(infile, outfile, &in, &out))
       {
@@ -146,7 +151,10 @@ int main(int argc, char **argv)
                   fprintf(stderr,"\n\Interesting atom list\n");
                   WritePDB(stderr,interest);
 #endif
-                  DoDistMatrix(out, interest);
+                  if(doMatrix)
+                     DoDistMatrix(out, interest);
+                  else
+                     PrintInterestingResidues(out, interest);
                }
             }
          }
@@ -166,7 +174,7 @@ int main(int argc, char **argv)
 
 
 BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
-                  char *limitfile, BOOL *doSurface)
+                  char *limitfile, BOOL *doSurface, BOOL *doMatrix)
 {
    argc--;
    argv++;
@@ -187,6 +195,9 @@ BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
             break;
 	 case 's':
             *doSurface = FALSE;
+            break;
+	 case 'm':
+            *doMatrix = TRUE;
             break;
          default:
             return(FALSE);
@@ -659,6 +670,89 @@ void DoDistMatrix(FILE *out, PDB *interest)
 }
 
 /************************************************************************/
+/*>void PrintInterestingResidues(FILE *out, PDB *interest)
+   --------------------------------
+
+   16.04.21 Original   By: ACRM
+*/
+void PrintInterestingResidues(FILE *out, PDB *interest)
+{
+   PDB *p;
+
+   D("Entered PrintInterestingResidues\n");
+
+   for(p=interest; p!=NULL; NEXT(p))
+   {
+      char resid[32];
+      int  charge     = 0,
+           aromatic   = 0,
+           hydropathy = 0;
+      
+      MAKERESID(resid, p);
+
+      SetProperties(p, &charge, &aromatic, &hydropathy); 
+      
+      fprintf(out, "%s %s %8.3f %8.3f %8.3f %2d %2d %2d\n",
+              p->resnam, resid, p->x, p->y, p->z,
+              charge, aromatic, hydropathy);
+   }
+}
+
+void SetProperties(PDB *p, int *charge, int *aromatic, int *hydropathy)
+{
+   *charge = *aromatic = *hydropathy = 0;
+   /* Negative charges                                                  */
+   if(!strncmp(p->resnam, "ASP", 3) ||
+      !strncmp(p->resnam, "GLU", 3))
+   {
+      *charge = -1;
+   }
+
+   /* Positive charges                                                  */
+   if(!strncmp(p->resnam, "LYS", 3) ||
+      !strncmp(p->resnam, "ARG", 3) ||
+      !strncmp(p->resnam, "HIS", 3))
+   {
+      *charge = 1;
+   }
+   
+   /* Aromatics                                                         */
+   if(!strncmp(p->resnam, "PHE", 3) ||
+      !strncmp(p->resnam, "TYR", 3) ||
+      !strncmp(p->resnam, "TRP", 3))
+   {
+      *aromatic = 1;
+   }
+   
+   /* Hydrophobic                                                       */
+   if(!strncmp(p->resnam, "PHE", 3) ||
+      !strncmp(p->resnam, "ILE", 3) ||
+      !strncmp(p->resnam, "LEU", 3) ||
+      !strncmp(p->resnam, "VAL", 3) ||
+      !strncmp(p->resnam, "TRP", 3))
+   {
+      *hydropathy = 1;
+   }
+   
+   /* Hydrophilic                                                       */
+   if(!strncmp(p->resnam, "ASP", 3) ||
+      !strncmp(p->resnam, "GLU", 3) ||
+      !strncmp(p->resnam, "HIS", 3) ||
+      !strncmp(p->resnam, "LYS", 3) ||
+      !strncmp(p->resnam, "ASN", 3) ||
+      !strncmp(p->resnam, "GLN", 3) ||
+      !strncmp(p->resnam, "ARG", 3) ||
+      !strncmp(p->resnam, "SER", 3) ||
+      !strncmp(p->resnam, "THR", 3) ||
+      !strncmp(p->resnam, "TYR", 3))
+   {
+      *hydropathy = -1;
+   }
+
+}
+
+
+/************************************************************************/
 /*>void Usage(void)
    ----------------
    Display a usage message
@@ -671,13 +765,16 @@ void Usage(void)
 {
    fprintf(stderr,"\nsurface V2.0 (c) 1993-2021 SciTech Software / \
 abYinformatics\n");
-   fprintf(stderr,"\nUsage: surface [-l limitsfile] [-s] [file.pdb \
+   fprintf(stderr,"\nUsage: surface [-l limitsfile][-s][-m] [file.pdb \
 [file.out]]\n");
    fprintf(stderr,"       -l specify limits file\n");
    fprintf(stderr,"       -s assume all residues are surface\n");
+   fprintf(stderr,"       -m produce a distance matrix (for match V1)\n");
    fprintf(stderr,"\nSearch for surface charged and aromatic residues \
-and create a distance matrix\n");
-   fprintf(stderr,"The limits file specifies ranges of amino acids to \
+and output their\n");
+   fprintf(stderr,"coordinates and properties or create a \
+distance matrix with -m\n");
+   fprintf(stderr,"\nThe limits file specifies ranges of amino acids to \
 be included\n");
    fprintf(stderr,"Input/output is through stdin/stdout if not \
 specified\n\n");
