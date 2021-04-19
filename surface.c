@@ -93,7 +93,7 @@
 /************************************************************************/
 /* Prototypes
 */
-int main(int argc, char **argv);
+int  main(int argc, char **argv);
 BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
                   char *limitfile, BOOL *doSurface, BOOL *doMatrix);
 PDB *FindSurfaceAtoms(PDB *pdb);
@@ -125,8 +125,8 @@ int main(int argc, char **argv)
         limitfile[MAXBUFF];
    BOOL doSurface = TRUE,
         doMatrix  = FALSE;
-   FILE *in  = stdin,
-        *out = stdout;
+   FILE *in       = stdin,
+        *out      = stdout;
    int  natoms;
    
 
@@ -186,6 +186,7 @@ int main(int argc, char **argv)
    return(0);
 }
 
+/************************************************************************/
 /*
    18.11.93 Original   By: ACRM
    19.11.93 Added doSurface parameter and flag
@@ -247,7 +248,6 @@ BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
 }
 
 
-
 /************************************************************************/
 /*>BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
                     BOOL *doSurface)
@@ -299,6 +299,7 @@ BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
    atoms.
    N.B. The occ field in the PDB linked lists will no longer be valid
    since it is used as a flag by this routine.
+
    18.11.93 Original   By: ACRM
 */
 PDB *FindSurfaceAtoms(PDB *pdb)
@@ -515,6 +516,7 @@ PDB *FindSurfaceAtoms(PDB *pdb)
    return(surface);
 }
 
+
 /************************************************************************/
 /*>PDB *FindAtomsOfInterest(PDB *surface)
    --------------------------------------
@@ -661,6 +663,7 @@ PDB *FindAtomsOfInterest(PDB *surface)
    return(interest);
 }
 
+
 /************************************************************************/
 /*>void DoDistMatrix(FILE *out, PDB *interest)
    --------------------------------
@@ -686,6 +689,7 @@ void DoDistMatrix(FILE *out, PDB *interest)
       }
    }
 }
+
 
 /************************************************************************/
 /*>void PrintInterestingResidues(FILE *out, PDB *interest)
@@ -714,6 +718,8 @@ void PrintInterestingResidues(FILE *out, PDB *interest)
    }
 }
 
+
+/************************************************************************/
 void SetPropertyString(PDB *p, char *properties)
 {
    int i;
@@ -803,6 +809,7 @@ be included\n");
    fprintf(stderr,"Input/output is through stdin/stdout if not \
 specified\n\n");
 }
+
 
 /************************************************************************/
 /*>PDB *SelectRanges(PDB *pdb, char *limitfile)
