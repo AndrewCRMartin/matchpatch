@@ -1,8 +1,8 @@
 /* #define DEBUG */
 /*************************************************************************
 
-   Program:    surface
-   File:       surface.c
+   Program:    matchpatchsurface
+   File:       matchpatchsurface.c
    
    Version:    V2.0
    Date:       16.04.21
@@ -752,10 +752,10 @@ void SetPropertyString(PDB *p, char *properties)
 */
 void Usage(void)
 {
-   fprintf(stderr,"\nsurface V2.0 (c) 1993-2021 SciTech Software / \
+   fprintf(stderr,"\nmatchpatchsurface V2.0 (c) 1993-2021 SciTech Software / \
 abYinformatics\n");
-   fprintf(stderr,"\nUsage: surface [-l limitsfile][-s][-m] [file.pdb \
-[file.out]]\n");
+   fprintf(stderr,"\nUsage: matchpatchsurface [-l limitsfile][-s][-m] \
+[file.pdb [file.out]]\n");
    fprintf(stderr,"       -l specify limits file\n");
    fprintf(stderr,"       -s assume all residues are surface\n");
    fprintf(stderr,"       -m produce a distance matrix (for match V1)\n");
