@@ -4,18 +4,18 @@ LOPT = -L$(HOME)/lib
 LIBS = -lbiop -lgen -lm -lxml2
 INCFILES = properties.h
 
-all : match surface
+all : matchpatch matchpatchsurface
 
-match.o : match.c $(INCFILES)
+matchpatch.o : matchpatch.c $(INCFILES)
 	$(CC) $(COPT) -c -o $@ $<
 
-surface.o : surface.c $(INCFILES)
+matchpatchsurface.o : matchpatchsurface.c $(INCFILES)
 	$(CC) $(COPT) -c -o $@ $<
 
-match : match.o
+matchpatch : matchpatch.o
 	$(CC) $(LOPT) -o $@ $< $(LIBS)
 
-surface : surface.o
+matchpatchsurface : matchpatchsurface.o
 	$(CC) $(LOPT) -o $@ $< $(LIBS)
 
 clean : 
@@ -23,4 +23,4 @@ clean :
 
 install :
 	mkdir -p $(HOME)/bin
-	cp match surface $(HOME)/bin
+	cp matchpatch matchpatchsurface $(HOME)/bin
