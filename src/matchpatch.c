@@ -117,9 +117,10 @@ REAL gBin      = DEFBIN,    /* Bin size for distance matrix             */
 */
 int  main(int argc, char **argv);
 BOOL ParseCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
-                  char *outfile, BOOL *invert);
+                  char *outfile, BOOL *invert, BOOL *verbose);
 void Usage(void);
-void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert);
+void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert,
+                BOOL verbose);
 DATA *ReadDataAndCreateMatrix(FILE *fp, int *outndists, int *outnatoms);
 ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom,
                       BOOL SwapProp);
@@ -129,7 +130,7 @@ void FillAtom(ATOM *outdata, int natom, int pos, char *resid,
               char *resnam, char *properties,
               int DistRange, BOOL SwapProp);
 void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc,
-            BOOL invert);
+            BOOL invert, BOOL verbose);
 void KillAtom(char *resid, DATA *data, 
               int ndata);
 void TrimBitStrings(int npat, ATOM *pat, int nstruc, ATOM *struc);
@@ -156,9 +157,11 @@ int main(int argc, char **argv)
    FILE *fp_pat   = NULL,
         *fp_struc = NULL,
         *out      = stdout;
-   BOOL invert    = FALSE;
+   BOOL invert    = FALSE,
+        verbose   = FALSE;
 
-   if(ParseCmdLine(argc, argv, PatFile, StrucFile, outfile, &invert))
+   if(ParseCmdLine(argc, argv, PatFile, StrucFile, outfile, &invert,
+                   &verbose))
    {
       if((fp_pat = fopen(PatFile,"r"))==NULL)
       {
@@ -176,7 +179,7 @@ int main(int argc, char **argv)
          exit(1);
       }
 
-      MatchFiles(out, fp_pat, fp_struc, invert);
+      MatchFiles(out, fp_pat, fp_struc, invert, verbose);
       fclose(fp_pat);
       fclose(fp_struc);
    }
@@ -190,7 +193,8 @@ int main(int argc, char **argv)
 
 /************************************************************************/
 /*>BOOL ParseCmdLine(int argc, char **argv, char *PatFile, 
-                     char *StrucFile, char *outfile, BOOL *invert)
+                     char *StrucFile, char *outfile, BOOL *invert,
+                     BOOL *verbose)
    ---------------------------------------------------------------
    Read the command line
 
@@ -198,9 +202,10 @@ int main(int argc, char **argv)
    22.11.93 Added flags
    16.04.21 Added -i flag
    16.04.21 Rewritten
+   19.04.21 Added -v
 */
 BOOL ParseCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
-                  char *outfile, BOOL *invert)
+                  char *outfile, BOOL *invert, BOOL *verbose)
 {
    argc--;
    argv++;
@@ -214,18 +219,21 @@ BOOL ParseCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
       {
          switch(argv[0][1])
          {
-         case 'd': case 'D':
+         case 'd': 
             argc--; argv++;
             sscanf(argv[0],"%lf",&gBin);
             if(gBin == 0.0) gBin = 1.0;
             break;
-         case 'a': case 'A':
+         case 'a': 
             argc--; argv++;
             sscanf(argv[0],"%lf",&gAccuracy);
             if(gAccuracy == 0.0) gAccuracy = 100.0;
             break;
-         case 'i': case 'I':
+         case 'i': 
             *invert = TRUE;
+            break;
+         case 'v': 
+            *verbose = TRUE;
             break;
          default:
             return(FALSE);
@@ -271,8 +279,9 @@ void Usage(void)
    fprintf(stderr,"\nMatch V2.0 (c) 1993-2021 SciTech Software / \
 abYinformatics\n");
 
-   fprintf(stderr,"\nUsage: match [-i][-d binsize][-a accuracy] \
+   fprintf(stderr,"\nUsage: match [-v][-i][-d binsize][-a accuracy] \
 patternFile structureFile [outfile]\n");
+   fprintf(stderr,"       -v verbose\n");
    fprintf(stderr,"       -i invert the properties in the pattern \
 file\n");
    fprintf(stderr,"       -d specifies distance bin size \
@@ -293,7 +302,8 @@ residues\n\n");
    ---------------------------------------------------------------------
    18.11.93 Original   By: ACRM
 */
-void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert)
+void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert,
+                BOOL verbose)
 {
    DATA *pat,
         *struc;
@@ -303,11 +313,14 @@ void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert)
    pat   = ReadDataAndCreateMatrix(fp_pat,   &nPat,   &nPatAtoms);
    struc = ReadDataAndCreateMatrix(fp_struc, &nStruc, &nStrucAtoms);
 
-   fprintf(stderr, "%d distances calculated from %d pattern atoms; \
+   if(verbose)
+   {
+      fprintf(stderr, "%d distances calculated from %d pattern atoms; \
 %d distances calculated from %d structure atoms\n",
-           nPat, nPatAtoms, nStruc, nStrucAtoms);
-
-   DoLesk(out, nPatAtoms, pat, nStrucAtoms, struc, invert);
+              nPat, nPatAtoms, nStruc, nStrucAtoms);
+   }
+   
+   DoLesk(out, nPatAtoms, pat, nStrucAtoms, struc, invert, verbose);
 
    free(pat);
    free(struc);
@@ -561,7 +574,8 @@ void FillAtom(ATOM *outdata, int natom, int pos,  char *resid,
 
 
 /************************************************************************/
-/*>void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc)
+/*>void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc,
+               BOOL verbose)
    ---------------------------------------------------------
    Does the actual Lesk pattern matching algorithm (with some 
    modifications).
@@ -569,9 +583,10 @@ void FillAtom(ATOM *outdata, int natom, int pos,  char *resid,
    19.11.93 Original   By: ACRM
    21.11.93 Added property comparison and printing of results :-)
    16.04.21 Added invert parameter instead of always inverting the pattern
+   19.04.21 Added verbose parameter
 */
 void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc,
-            BOOL invert)
+            BOOL invert, BOOL verbose)
 {
    ATOM *PatAtom       = NULL,
         *StrucAtom     = NULL;
@@ -588,8 +603,11 @@ void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc,
       StrucAtom = CreateAtomArray(struc, nstruc, &NStrucAtom, FALSE);
 
       /* Print information on remaining atoms                           */
-      fprintf(stderr, "Iteration %d: %d pattern atoms and %d structure \
-atoms remain\n",i,NPatAtom,NStrucAtom);
+      if(verbose)
+      {
+         fprintf(stderr, "Iteration %d: %d pattern atoms and %d \
+structure atoms remain\n",i,NPatAtom,NStrucAtom);
+      }
 
       /* Remove any distance flags from the bit strings which are 
          never seen in the other structure
@@ -641,8 +659,11 @@ atoms remain\n",i,NPatAtom,NStrucAtom);
          if(!Found)
 	 {
             KillAtom(StrucAtom[j].resid, struc, nstruc);
-	    fprintf(stderr, "Structure atom: %s %-5s killed\n",
-                    StrucAtom[j].resnam, StrucAtom[j].resid);
+            if(verbose)
+            {
+               fprintf(stderr, "Structure atom: %s %-5s killed\n",
+                       StrucAtom[j].resnam, StrucAtom[j].resid);
+            }
          }
       }
 

@@ -95,9 +95,10 @@
 */
 int  main(int argc, char **argv);
 BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
-                  char *limitfile, BOOL *doSurface, BOOL *doMatrix);
-PDB *FindSurfaceAtoms(PDB *pdb);
-PDB *FindAtomsOfInterest(PDB *surface);
+                  char *limitfile, BOOL *doSurface, BOOL *doMatrix,
+                  BOOL *verbose);
+PDB *FindSurfaceAtoms(PDB *pdb, BOOL verbose);
+PDB *FindAtomsOfInterest(PDB *surface, BOOL verbose);
 void DoDistMatrix(FILE *out, PDB *interest);
 void PrintInterestingResidues(FILE *out, PDB *interest);
 void Usage(void);
@@ -124,20 +125,21 @@ int main(int argc, char **argv)
         outfile[MAXBUFF],
         limitfile[MAXBUFF];
    BOOL doSurface = TRUE,
-        doMatrix  = FALSE;
+        doMatrix  = FALSE,
+        verbose   = FALSE;
    FILE *in       = stdin,
         *out      = stdout;
    int  natoms;
    
 
    if(ParseCmdLine(argc, argv, infile, outfile, limitfile, &doSurface,
-                   &doMatrix))
+                   &doMatrix, &verbose))
    {
       if(blOpenStdFiles(infile, outfile, &in, &out))
       {
          if((pdb = blReadPDBAtoms(in, &natoms))!=NULL)
          {
-            if(doSurface) surface = FindSurfaceAtoms(pdb);
+            if(doSurface) surface = FindSurfaceAtoms(pdb, verbose);
             else          surface = pdb;
          
             if(surface != NULL)
@@ -147,7 +149,7 @@ int main(int argc, char **argv)
                else
                   surf = surface;
                
-               if((interest = FindAtomsOfInterest(surf)) != NULL)
+               if((interest = FindAtomsOfInterest(surf, verbose)) != NULL)
                {
                   if(surf != surface)
                      FREELIST(surf, PDB);
@@ -193,16 +195,19 @@ int main(int argc, char **argv)
    18.11.93 Original   By: ACRM
    19.11.93 Added doSurface parameter and flag
    16.04.21 Rewritten
+   19.04.21 Added -v
 */
 BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
-                  char *limitfile, BOOL *doSurface, BOOL *doMatrix)
+                  char *limitfile, BOOL *doSurface, BOOL *doMatrix,
+                  BOOL *verbose)
 {
    argc--;
    argv++;
    
    infile[0]  = outfile[0] = limitfile[0] = '\0';
    *doSurface = TRUE;
-   
+   *verbose   = FALSE;
+   *doMatrix  = FALSE;
    
    while(argc)
    {
@@ -219,6 +224,9 @@ BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
             break;
 	 case 'm':
             *doMatrix = TRUE;
+            break;
+	 case 'v':
+            *verbose = TRUE;
             break;
          default:
             return(FALSE);
@@ -251,8 +259,8 @@ BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
 
 
 /************************************************************************/
-/*>PDB *FindSurfaceAtoms(PDB *pdb)
-   -------------------------------
+/*>PDB *FindSurfaceAtoms(PDB *pdb, BOOL verbose)
+   ---------------------------------------------
    Identifies surface atoms using a simple grid search along x, y and z
    axes. This is not an ideal analytical answer since it will not handle
    re-entrant surfaces correctly.
@@ -263,7 +271,7 @@ BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
 
    18.11.93 Original   By: ACRM
 */
-PDB *FindSurfaceAtoms(PDB *pdb)
+PDB *FindSurfaceAtoms(PDB *pdb, BOOL verbose)
 {
    PDB  *surface = NULL,
         *p,
@@ -272,8 +280,12 @@ PDB *FindSurfaceAtoms(PDB *pdb)
         ymin, ymax, y,
         zmin, zmax, z;
 
-   fprintf(stderr,"Finding surface atoms using %f Angstrom grid\n",
-           (double)GRID);
+   if(verbose)
+   {
+      fprintf(stderr,"Finding surface atoms using %f Angstrom grid\n",
+              (double)GRID);
+   }
+   
 
    /* Find size of coordinate box and set occ's to zero to use as flag  */
    xmin = xmax = pdb->x;
@@ -298,11 +310,20 @@ PDB *FindSurfaceAtoms(PDB *pdb)
    ymax += BOXSIZE;
    zmax += BOXSIZE;
 
-   fprintf(stderr,"Dimensions of box are: %f %f %f\n\n",
-           (double)(xmax-xmin),(double)(ymax-ymin),(double)(zmax-zmin));
-
+   if(verbose)
+   {
+      fprintf(stderr,"Dimensions of box are: %f %f %f\n\n",
+              (double)(xmax-xmin),
+              (double)(ymax-ymin),
+              (double)(zmax-zmin));
+   }
+   
    /* For each point on the x-y plane, search along the z axis          */
-   fprintf(stderr,"Searching along z...\n");
+   if(verbose)
+   {
+      fprintf(stderr,"Searching along z...\n");
+   }
+   
    for(x=xmin; x<=xmax; x+=GRID)
    {
       for(y=ymin; y<=ymax; y+=GRID)
@@ -350,7 +371,11 @@ PDB *FindSurfaceAtoms(PDB *pdb)
 
 
    /* For each point on the x-z plane, search along the y axis          */
-   fprintf(stderr,"Searching along y...\n");
+   if(verbose)
+   {
+      fprintf(stderr,"Searching along y...\n");
+   }
+   
    for(x=xmin; x<=xmax; x+=GRID)
    {
       for(z=zmin; z<=zmax; z+=GRID)
@@ -398,7 +423,11 @@ PDB *FindSurfaceAtoms(PDB *pdb)
 
 
    /* For each point on the y-z plane, search along the x axis          */
-   fprintf(stderr,"Searching along x...\n");
+   if(verbose)
+   {
+      fprintf(stderr,"Searching along x...\n");
+   }
+   
    for(y=ymin; y<=ymax; y+=GRID)
    {
       for(z=zmin; z<=zmax; z+=GRID)
@@ -476,8 +505,8 @@ PDB *FindSurfaceAtoms(PDB *pdb)
 
 
 /************************************************************************/
-/*>PDB *FindAtomsOfInterest(PDB *surface)
-   --------------------------------------
+/*>PDB *FindAtomsOfInterest(PDB *surface, BOOL verbose)
+   ----------------------------------------------------
    Searches a PDB linked list for all charged atoms and returns a PDB 
    linked list containing only those atoms.
    This could be improved to read the atoms of interest from a file
@@ -486,16 +515,19 @@ PDB *FindSurfaceAtoms(PDB *pdb)
 
    18.11.93 Original   By: ACRM
    22.11.93 Added aromatics
-   19.05.94 Added phosphate for DNA
+   19.05.94 Added phosphate for DNA; added verbose
 */
-PDB *FindAtomsOfInterest(PDB *surface)
+PDB *FindAtomsOfInterest(PDB *surface, BOOL verbose)
 {
    PDB *interest = NULL,
        *CurrInt  = NULL,
        *p,
        *q;
 
-   fprintf(stderr,"Finding atoms of interest on the surface...\n");
+   if(verbose)
+   {
+      fprintf(stderr,"Finding atoms of interest on the surface...\n");
+   }
 
    /* We use occ as a flag to indicate interesting atoms                */
    D("Clearing occ flag\n");
@@ -754,8 +786,9 @@ void Usage(void)
 {
    fprintf(stderr,"\nmatchpatchsurface V2.0 (c) 1993-2021 SciTech Software / \
 abYinformatics\n");
-   fprintf(stderr,"\nUsage: matchpatchsurface [-l limitsfile][-s][-m] \
-[file.pdb [file.out]]\n");
+   fprintf(stderr,"\nUsage: matchpatchsurface [-v][-l limitsfile][-s]\
+[-m] [file.pdb [file.out]]\n");
+   fprintf(stderr,"       -v Verbose\n");
    fprintf(stderr,"       -l specify limits file\n");
    fprintf(stderr,"       -s assume all residues are surface\n");
    fprintf(stderr,"       -m produce a distance matrix (for match V1)\n");
