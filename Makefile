@@ -2,11 +2,14 @@
 COPT = -g -Wall -ansi -pedantic -I$(HOME)/include
 LOPT = -L$(HOME)/lib
 LIBS = -lbiop -lgen -lm -lxml2
+INCFILES = properties.h
 
 all : match surface
 
+match.o : match.c $(INCFILES)
+	$(CC) $(COPT) -c -o $@ $<
 
-.c.o :
+surface.o : surface.c $(INCFILES)
 	$(CC) $(COPT) -c -o $@ $<
 
 match : match.o
