@@ -3,7 +3,7 @@
    Program:    match
    File:       match.c
    
-   Version:    V1.3
+   Version:    V2.0
    Date:       16.04.21
    Function:   Match 2 distance matrices as created by surface
    
@@ -47,6 +47,8 @@
    V1.2  16.04.21 Made inversion of one pattern an option (instead of
                   always doing it)
    V1.3  16.04.21 Now uses our standard way of parsing the command line
+   V2.0  16.04.21 Now reads coordinates and features from input files
+                  instead of distance matrix which is calculated here
 
 *************************************************************************/
 /* Includes
@@ -83,10 +85,21 @@ typedef struct
    int  resnum[2];
    char resnam[2][8],
         chain[2][8],
-        insert[2][8];
+        insert[2][8],
+        resid[2][16];
    int  dist;
    BOOL dead;
 }  DATA;
+
+typedef struct _indata
+{
+   REAL x, y, z;
+   int charge, aromatic, hydropathy;
+   char resnam[8], resid[16];
+   struct _indata *next;
+}  INDATA;
+
+   
 
 typedef struct
 {
@@ -115,7 +128,7 @@ void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert);
 DATA *ReadMatrix(FILE *fp, int *outnatom);
 ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom,
                       BOOL SwapProp);
-int ConvDist(REAL dist);
+int ConvertDistanceToBin(REAL dist);
 int GotAtom(ATOM *outdata, int natom, char *chain, int resnum, 
             char *insert);
 void FillAtom(ATOM *outdata, int natom, int pos, char *chain, int resnum, 
@@ -247,9 +260,6 @@ BOOL ParseCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
 }
 
 
-
-
-
 /************************************************************************/
 /*>void Usage(void)
    ----------------
@@ -257,11 +267,11 @@ BOOL ParseCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
 
    18.11.93 Original   By: ACRM
    22.11.93 Added flag decriptions
-   16.04.21 V1.1, V1.2, V1.3
+   16.04.21 V1.1, V1.2, V1.3, V2.0
 */
 void Usage(void)
 {
-   fprintf(stderr,"\nMatch V1.3 (c) 1993-2021 SciTech Software / \
+   fprintf(stderr,"\nMatch V2.0 (c) 1993-2021 SciTech Software / \
 abYinformatics\n");
 
    fprintf(stderr,"\nUsage: match [-i][-d binsize][-a accuracy] \
@@ -317,12 +327,21 @@ DATA *ReadMatrix(FILE *fp, int *outnatom)
         i        = 0;
    DATA *outdata = NULL;
    char buffer[MAXBUFF];
-
+   INDATA *indata = NULL,
+          *ini    = NULL,
+          *inj    = NULL;
+   
    *outnatom = 0;
 
    /* Scan the file to see how long it is                               */
    while(fgets(buffer,MAXBUFF-1,fp)) maxrec++;
    rewind(fp);
+
+   /* maxrec is the number of atom points. We need the number of distances
+      between these atoms which is (maxrec^2 - maxrec/2) - one 
+      off-diagonal triangle from the matrix
+   */
+   maxrec = (int)((REAL)(maxrec*maxrec)/2.0 - (REAL)maxrec/2.0);
 
    /* Allocate this much space                                          */
    if((outdata = malloc(maxrec * sizeof(DATA)))==NULL)
@@ -332,34 +351,73 @@ DATA *ReadMatrix(FILE *fp, int *outnatom)
    i=0;
    while(fgets(buffer,MAXBUFF-1,fp))
    {
-      char resnam1[8], resnam2[8],
-           chain1[8],  chain2[8],
-           insert1[8], insert2[8];
-      int  resnum1,    resnum2,
-           DistRange;
-      REAL dist;
+      if(indata==NULL)
+      {
+         INIT(indata, INDATA);
+         ini = indata;
+      }
+      else
+      {
+         ALLOCNEXT(ini, INDATA);
+      }
 
-      fsscanf(buffer,"%4s%1x%c%4d%c%1x%4s%1x%c%4d%c%1x%8lf",
-              resnam1, chain1, &resnum1, insert1,
-              resnam2, chain2, &resnum2, insert2,
-              &dist);
+      if(ini == NULL)
+      {
+         fprintf(stderr,"No memory for input data\n");
+         FREELIST(indata, INDATA);
+         exit(1);
+      }
+      sscanf(buffer,"%s %s %lf %lf %lf %d %d %d",
+             ini->resnam, ini->resid,
+             &ini->x, &ini->y, &ini->z,
+             &ini->charge, &ini->aromatic, &ini->hydropathy);
+   }
 
-      DistRange = ConvDist(dist);
+   i = 0;
+   for(ini=indata; ini!=NULL; NEXT(ini))
+   {
+      for(inj=ini->next; inj!=NULL; NEXT(inj))
+      {
+         char resnam1[8], resnam2[8],
+            chain1[8],  chain2[8],
+            insert1[8], insert2[8],
+            resid1[8], resid2[8];
+         int  resnum1,    resnum2,
+            DistRange;
+         REAL dist;
+         
+#ifdef OLD
+         fsscanf(buffer,"%4s%1x%c%4d%c%1x%4s%1x%c%4d%c%1x%8lf",
+                 resnam1, chain1, &resnum1, insert1,
+                 resnam2, chain2, &resnum2, insert2,
+                 &dist);
+#endif
+         dist = DIST(ini, inj);
+         DistRange = ConvertDistanceToBin(dist);
 
-      outdata[i].resnum[0] = resnum1;
-      strcpy(outdata[i].resnam[0], resnam1);
-      strcpy(outdata[i].chain[0],  chain1);
-      strcpy(outdata[i].insert[0], insert1);
+         
+#ifdef OLD
+         outdata[i].resnum[0] = resnum1;
+         strcpy(outdata[i].chain[0],  chain1);
+         strcpy(outdata[i].insert[0], insert1);
+#endif
+         strcpy(outdata[i].resnam[0], resnam1);
+         strcpy(outdata[i].resid[0], ini->resid);
 
-      outdata[i].resnum[1] = resnum2;
-      strcpy(outdata[i].resnam[1], resnam2);
-      strcpy(outdata[i].chain[1],  chain2);
-      strcpy(outdata[i].insert[1], insert2);
+#ifdef OLD
+         outdata[i].resnum[1] = resnum2;
+         strcpy(outdata[i].chain[1],  chain2);
+         strcpy(outdata[i].insert[1], insert2);
+#endif
+         strcpy(outdata[i].resnam[1], resnam2);
+         strcpy(outdata[i].resid[1], inj->resid);
 
-      outdata[i].dist = DistRange;
-      outdata[i].dead = FALSE;
+         outdata[i].dist = DistRange;
+         outdata[i].dead = FALSE;
 
-      i++;
+         i++;
+      }
+      
    }
 
    *outnatom = i;
@@ -416,15 +474,15 @@ ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom, BOOL SwapProp)
 }
 
 /************************************************************************/
-/*>int ConvDist(REAL dist)
+/*>int ConvertDistanceToBin(REAL dist)
    -----------------------
    Converts a distance (REAL) to an integer bin number < MAXDIST. The bin
-   size os read from the global variable gBin
+   size is read from the global variable gBin
 
    19.11.93 Original   By: ACRM
    22.11.93 Changed to read bin size from global gBin
 */
-int ConvDist(REAL dist)
+int ConvertDistanceToBin(REAL dist)
 {
    int idist;
 
