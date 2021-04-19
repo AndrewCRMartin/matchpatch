@@ -73,6 +73,8 @@
 #define MAXITER       100
 #define MAXDIST        32
 #define MAXBUFF       160
+#define MAXLABEL        8
+#define MAXRESID       16
 
 #define DEFBIN        1.0     /* Default distance bin size              */
 #define DEFACC       50.0     /* Default string match accuracy          */
@@ -82,11 +84,8 @@
 */
 typedef struct
 {
-   int  resnum[2];
-   char resnam[2][8],
-        chain[2][8],
-        insert[2][8],
-        resid[2][16];
+   char resnam[2][MAXLABEL],
+        resid[2][MAXRESID];
    int  dist;
    BOOL dead;
 }  DATA;
@@ -95,7 +94,7 @@ typedef struct _indata
 {
    REAL x, y, z;
    int charge, aromatic, hydropathy;
-   char resnam[8], resid[16];
+   char resnam[MAXLABEL], resid[MAXRESID];
    struct _indata *next;
 }  INDATA;
 
@@ -103,11 +102,8 @@ typedef struct _indata
 
 typedef struct
 {
-   int  resnum;
-   char resnam[8],
-        chain[8],
-      insert[8],
-      resid[16];
+   char resnam[MAXLABEL],
+      resid[MAXRESID];
    char dist[MAXDIST],
         property[MAXPROP];
 }  ATOM;
