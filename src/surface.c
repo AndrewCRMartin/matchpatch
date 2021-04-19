@@ -116,10 +116,10 @@ void SetPropertyString(PDB *p, char *properties);
 */
 int main(int argc, char **argv)
 {
-   PDB  *pdb,
-        *surface,
-        *surf,
-        *interest;
+   PDB  *pdb      = NULL,
+        *surface  = NULL,
+        *surf     = NULL,
+        *interest = NULL;
    char infile[MAXBUFF],
         outfile[MAXBUFF],
         limitfile[MAXBUFF];
@@ -150,10 +150,11 @@ int main(int argc, char **argv)
                if((interest = FindAtomsOfInterest(surf)) != NULL)
                {
                   if(surf != surface)
-                  {
                      FREELIST(surf, PDB);
-                  }
-                  FREELIST(surface, PDB);
+
+                  if(surface != pdb)
+                     FREELIST(surface, PDB);
+
 #ifdef DEBUG
                   fprintf(stderr,"\n\Interesting atom list\n");
                   WritePDB(stderr,interest);
@@ -816,7 +817,7 @@ Limits ignored\n");
    }   
    if((stop = (PDB *)malloc(nrange * sizeof(PDB))) == NULL)
    {
-      free(stop);
+      FREE(stop);
       fprintf(stderr,"No memory for limit range storage. \
 Limits ignored\n");
       return(pdb);
@@ -902,8 +903,8 @@ zones. Using all residues.\n");
    }
 
    /* Free memory and return                                            */
-   if(start != NULL) free(start);
-   if(stop  != NULL) free(stop);
+   FREE(start);
+   FREE(stop);
 
    return(outpdb);
 }

@@ -53,3 +53,17 @@ History
 This code was originally written while working at the DKfz, Heidelberg
 in 1993. It was updated in 2021 to compile cleanly using newer compilers
 and to call the new BiopLib routines.
+
+V2.0 now moves all of the calculations of distances from `surface`
+into `match` and moves the property assignment from `match` into
+`surface`.
+
+
+Notes
+-----
+
+The current version does not identify hydrophobic and hydrophilic
+residues on the surface although it uses the flags for these for
+residues that it has found (charged, aromatic) as part of the
+comparison.
+
