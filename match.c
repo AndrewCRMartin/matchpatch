@@ -85,7 +85,7 @@
 typedef struct
 {
    char resnam[2][MAXLABEL],
-        resid[2][MAXRESID];
+      resid[2][MAXRESID];
    int  dist;
    BOOL dead;
 }  DATA;

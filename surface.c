@@ -77,6 +77,8 @@
 #define WATERSQ (WATER * WATER)
 #define MAXBUFF 160
 
+#define MAXPROPERTIES 8
+
 #ifdef DEBUG
 #define D(BUG) fprintf(stderr,BUG)
 #else
@@ -100,6 +102,7 @@ void PrintInterestingResidues(FILE *out, PDB *interest);
 void Usage(void);
 PDB *SelectRanges(PDB *pdb, char *limitfile);
 void SetProperties(PDB *p, int *charge, int *aromatic, int *hydropathy);
+void SetPropertyString(PDB *p, char *properties);
 
 
 /************************************************************************/
@@ -689,14 +692,24 @@ void PrintInterestingResidues(FILE *out, PDB *interest)
       int  charge     = 0,
            aromatic   = 0,
            hydropathy = 0;
+      char properties[MAXPROPERTIES+1];
       
       MAKERESID(resid, p);
 
-      SetProperties(p, &charge, &aromatic, &hydropathy); 
+      SetPropertyString(p, properties);
+      
+      fprintf(out, "%s %s %8.3f %8.3f %8.3f %s\n",
+              p->resnam, resid, p->x, p->y, p->z,
+              properties);
+
+      
+/*
+      SetProperties(p, &charge, &aromatic, &hydropathy);
       
       fprintf(out, "%s %s %8.3f %8.3f %8.3f %2d %2d %2d\n",
               p->resnam, resid, p->x, p->y, p->z,
               charge, aromatic, hydropathy);
+*/
    }
 }
 
@@ -751,6 +764,69 @@ void SetProperties(PDB *p, int *charge, int *aromatic, int *hydropathy)
       *hydropathy = -1;
    }
 
+}
+
+#define PROP_POSITIVE    0
+#define PROP_NEGATIVE    1
+#define PROP_AROMATIC    2
+#define PROP_HYDROPHOBIC 3
+#define PROP_HYDROPHILIC 4
+
+void SetPropertyString(PDB *p, char *properties)
+{
+   int i;
+   
+   for(i=0; i<MAXPROPERTIES; i++)
+      properties[i] = '0';
+   properties[MAXPROPERTIES] = '\0';
+   
+   /* Negative charges                                                  */
+   if(!strncmp(p->resnam, "ASP", 3) ||
+      !strncmp(p->resnam, "GLU", 3))
+   {
+      properties[PROP_NEGATIVE] = '1';
+   }
+
+   /* Positive charges                                                  */
+   if(!strncmp(p->resnam, "LYS", 3) ||
+      !strncmp(p->resnam, "ARG", 3) ||
+      !strncmp(p->resnam, "HIS", 3))
+   {
+      properties[PROP_POSITIVE] = '1';
+   }
+   
+   /* Aromatics                                                         */
+   if(!strncmp(p->resnam, "PHE", 3) ||
+      !strncmp(p->resnam, "TYR", 3) ||
+      !strncmp(p->resnam, "TRP", 3))
+   {
+      properties[PROP_AROMATIC] = '1';
+   }
+   
+   /* Hydrophobic                                                       */
+   if(!strncmp(p->resnam, "PHE", 3) ||
+      !strncmp(p->resnam, "ILE", 3) ||
+      !strncmp(p->resnam, "LEU", 3) ||
+      !strncmp(p->resnam, "VAL", 3) ||
+      !strncmp(p->resnam, "TRP", 3))
+   {
+      properties[PROP_HYDROPHOBIC] = '1';
+   }
+   
+   /* Hydrophilic                                                       */
+   if(!strncmp(p->resnam, "ASP", 3) ||
+      !strncmp(p->resnam, "GLU", 3) ||
+      !strncmp(p->resnam, "HIS", 3) ||
+      !strncmp(p->resnam, "LYS", 3) ||
+      !strncmp(p->resnam, "ASN", 3) ||
+      !strncmp(p->resnam, "GLN", 3) ||
+      !strncmp(p->resnam, "ARG", 3) ||
+      !strncmp(p->resnam, "SER", 3) ||
+      !strncmp(p->resnam, "THR", 3) ||
+      !strncmp(p->resnam, "TYR", 3))
+   {
+      properties[PROP_HYDROPHILIC] = '1';
+   }
 }
 
 
