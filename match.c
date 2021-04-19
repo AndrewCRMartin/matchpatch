@@ -106,7 +106,8 @@ typedef struct
    int  resnum;
    char resnam[8],
         chain[8],
-        insert[8];
+      insert[8],
+      resid[16];
    char dist[MAXDIST],
         property[MAXPROP];
 }  ATOM;
@@ -129,13 +130,12 @@ DATA *ReadMatrix(FILE *fp, int *outnatom);
 ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom,
                       BOOL SwapProp);
 int ConvertDistanceToBin(REAL dist);
-int GotAtom(ATOM *outdata, int natom, char *chain, int resnum, 
-            char *insert);
-void FillAtom(ATOM *outdata, int natom, int pos, char *chain, int resnum, 
-              char *insert, char *resnam, int DistRange, BOOL SwapProp);
+int GotAtom(ATOM *outdata, int natom, char *resid);
+void FillAtom(ATOM *outdata, int natom, int pos, char *resid,
+              char *resnam, int DistRange, BOOL SwapProp);
 void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc,
             BOOL invert);
-void KillAtom(char *chain, int resnum, char *insert, DATA *data, 
+void KillAtom(char *resid, DATA *data, 
               int ndata);
 void TrimBitStrings(int npat, ATOM *pat, int nstruc, ATOM *struc);
 void PrintResults(FILE *out, int NPatAtom,   ATOM *PatAtom, 
@@ -320,6 +320,7 @@ void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert)
 
    18.11.93 Original   By: ACRM
    22.11.93 Corrected return values
+   19.04.21 Now reads the coordinates and does the distance calculations
 */
 DATA *ReadMatrix(FILE *fp, int *outnatom)
 {
@@ -378,38 +379,18 @@ DATA *ReadMatrix(FILE *fp, int *outnatom)
    {
       for(inj=ini->next; inj!=NULL; NEXT(inj))
       {
-         char resnam1[8], resnam2[8],
-            chain1[8],  chain2[8],
-            insert1[8], insert2[8],
-            resid1[8], resid2[8];
-         int  resnum1,    resnum2,
-            DistRange;
+
+         int  DistRange;
          REAL dist;
          
-#ifdef OLD
-         fsscanf(buffer,"%4s%1x%c%4d%c%1x%4s%1x%c%4d%c%1x%8lf",
-                 resnam1, chain1, &resnum1, insert1,
-                 resnam2, chain2, &resnum2, insert2,
-                 &dist);
-#endif
          dist = DIST(ini, inj);
          DistRange = ConvertDistanceToBin(dist);
 
          
-#ifdef OLD
-         outdata[i].resnum[0] = resnum1;
-         strcpy(outdata[i].chain[0],  chain1);
-         strcpy(outdata[i].insert[0], insert1);
-#endif
-         strcpy(outdata[i].resnam[0], resnam1);
+         strcpy(outdata[i].resnam[0], ini->resnam);
          strcpy(outdata[i].resid[0], ini->resid);
 
-#ifdef OLD
-         outdata[i].resnum[1] = resnum2;
-         strcpy(outdata[i].chain[1],  chain2);
-         strcpy(outdata[i].insert[1], insert2);
-#endif
-         strcpy(outdata[i].resnam[1], resnam2);
+         strcpy(outdata[i].resnam[1], inj->resnam);
          strcpy(outdata[i].resid[1], inj->resid);
 
          outdata[i].dist = DistRange;
@@ -447,24 +428,23 @@ ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom, BOOL SwapProp)
       if(data[i].dead) continue;
 
       /* See if we've got a record for the first residue                */
-      pos = GotAtom(outatom, natom, data[i].chain[0], data[i].resnum[0],
-                    data[i].insert[0]);
+      pos = GotAtom(outatom, natom, data[i].resid[0]);
       if(pos == (-1)) pos = natom++;
 
       /* Fill this into the data array                                  */
       FillAtom(outatom, natom, pos,
-               data[i].chain[0],  data[i].resnum[0],
-               data[i].insert[0], data[i].resnam[0], data[i].dist,
+               data[i].resid[0],
+               data[i].resnam[0], data[i].dist,
                SwapProp);
 
       /* See if we've got a record for the second residue               */
-      pos = GotAtom(outatom, natom, data[i].chain[1], data[i].resnum[1],
-                    data[i].insert[1]);
+      pos = GotAtom(outatom, natom, data[i].resid[1]);
       if(pos == (-1)) pos = natom++;
 
       /* Fill this into the data array                                  */
-      FillAtom(outatom, natom, pos, data[i].chain[1], data[i].resnum[1],
-               data[i].insert[1], data[i].resnam[1], data[i].dist,
+      FillAtom(outatom, natom, pos,
+               data[i].resid[1],
+               data[i].resnam[1], data[i].dist,
                SwapProp);
    }
 
@@ -493,24 +473,21 @@ int ConvertDistanceToBin(REAL dist)
 }
 
 /************************************************************************/
-/*>int GotAtom(ATOM *outdata, int natom, char *chain, int resnum, 
-               char *insert)
+/*>int GotAtom(ATOM *outdata, int natom, char *resid)
    --------------------------------------------------------------
    Searches the current outdata array to see if we already have this
    residue. If so, returns the index into the array. If not, returns -1
 
    19.11.93 Original   By: ACRM
+   19.04.21 Changed to use resid
 */
-int GotAtom(ATOM *outdata, int natom, char *chain, int resnum, 
-            char *insert)
+int GotAtom(ATOM *outdata, int natom, char *resid)
 {
    int i;
 
    for(i=0; i<natom; i++)
    {
-      if(outdata[i].resnum    == resnum    &&
-         outdata[i].chain[0]  == chain[0]  &&
-         outdata[i].insert[0] == insert[0])
+      if(!strcmp(outdata[i].resid, resid))
       {
          return(i);
       }
@@ -519,8 +496,8 @@ int GotAtom(ATOM *outdata, int natom, char *chain, int resnum,
 }
 
 /************************************************************************/
-/*>void FillAtom(ATOM *outdata, int natom, int pos, char *chain, 
-                 int resnum, char *insert, char *resnam, int DistRange,
+/*>void FillAtom(ATOM *outdata, int natom, int pos, char *resid,
+                 char *resnam, int DistRange,
                  BOOL SwapProp)
    --------------------------------------------------------------------
    Fill in an item in the data array. If (pos == natom-1) then it's a
@@ -530,18 +507,17 @@ int GotAtom(ATOM *outdata, int natom, char *chain, int resnum,
    19.11.93 Original   By: ACRM
    22.11.93 Added aromatic support
    19.05.94 Added DNA support
+   19.04.21 Changed to resid
 */
-void FillAtom(ATOM *outdata, int natom, int pos, char *chain, int resnum, 
-              char *insert, char *resnam, int DistRange, BOOL SwapProp)
+void FillAtom(ATOM *outdata, int natom, int pos,  char *resid,
+              char *resnam, int DistRange, BOOL SwapProp)
 {
    int i;
 
    if(pos == natom-1)
    {
       /* A new residue; fill in all data                                */
-      outdata[pos].resnum = resnum;
-      strcpy(outdata[pos].chain,  chain);
-      strcpy(outdata[pos].insert, insert);
+      strcpy(outdata[pos].resid,  resid);
       strcpy(outdata[pos].resnam, resnam);
 
       /* Clear all distance and property flags                          */
@@ -652,11 +628,9 @@ atoms remain\n",i,NPatAtom,NStrucAtom);
 
          if(!Found)
 	 {
-            KillAtom(StrucAtom[j].chain, StrucAtom[j].resnum, 
-                     StrucAtom[j].insert, struc, nstruc);
-	    fprintf(stderr, "Structure atom: %s %c%d%c killed\n",
-                    StrucAtom[j].resnam, StrucAtom[j].chain[0],
-                    StrucAtom[j].resnum, StrucAtom[j].insert[0]);
+            KillAtom(StrucAtom[j].resid, struc, nstruc);
+	    fprintf(stderr, "Structure atom: %s %s killed\n",
+                    StrucAtom[j].resnam, StrucAtom[j].resid);
          }
       }
    }
@@ -665,26 +639,20 @@ atoms remain\n",i,NPatAtom,NStrucAtom);
 }
 
 /************************************************************************/
-/*>void KillAtom(char *chain, int resnum, char *insert, 
-                 DATA *struc, int nstruc)
+/*>void KillAtom(char *resid, DATA *struc, int nstruc)
    ----------------------------------------------------
    Set the dead flag in the data array for an atom;
 
    19.11.93 Original   By: ACRM
 */
-void KillAtom(char *chain, int resnum, char *insert, DATA *data, 
-              int ndata)
+void KillAtom(char *resid, DATA *data, int ndata)
 {
    int i;
 
    for(i=0; i<ndata; i++)
    {
-      if((resnum    == data[i].resnum[0] &&
-          chain[0]  == data[i].chain[0][0]  &&
-          insert[0] == data[i].insert[0][0])   ||
-         (resnum    == data[i].resnum[1] &&
-          chain[0]  == data[i].chain[1][0]  &&
-          insert[0] == data[i].insert[1][0]))
+      if(!strcmp(resid, data[i].resid[0]) ||
+         !strcmp(resid, data[i].resid[1]))
       {
          data[i].dead = TRUE;
       }
@@ -812,11 +780,9 @@ void PrintBestMatch(FILE *out,
    /* If we got a best score, print it out                              */
    if(best != (-1))
    {
-      fprintf(out, "Pattern: %s %c%d%c matches Structure: %s %c%d%c\n",
-              PatAtom[PatIndex].resnam, PatAtom[PatIndex].chain[0], 
-              PatAtom[PatIndex].resnum, PatAtom[PatIndex].insert[0],
-              StrucAtom[best].resnam, StrucAtom[best].chain[0], 
-              StrucAtom[best].resnum, StrucAtom[best].insert[0]);
+      fprintf(out, "Pattern: %s %s matches Structure: %s %s\n",
+              PatAtom[PatIndex].resnam, PatAtom[PatIndex].resid,
+              StrucAtom[best].resnam, StrucAtom[best].resid);
    }
 }
 
