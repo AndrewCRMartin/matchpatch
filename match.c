@@ -98,8 +98,6 @@ typedef struct _indata
    struct _indata *next;
 }  INDATA;
 
-   
-
 typedef struct
 {
    char resnam[MAXLABEL],
@@ -117,7 +115,7 @@ REAL gBin      = DEFBIN,    /* Bin size for distance matrix             */
 /************************************************************************/
 /* Prototypes
 */
-int main(int argc, char **argv);
+int  main(int argc, char **argv);
 BOOL ParseCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
                   char *outfile, BOOL *invert);
 void Usage(void);
@@ -125,8 +123,8 @@ void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert);
 DATA *ReadDataAndCreateMatrix(FILE *fp, int *outnatom);
 ATOM *CreateAtomArray(DATA *data, int ndata, int *outnatom,
                       BOOL SwapProp);
-int ConvertDistanceToBin(REAL dist);
-int GotAtom(ATOM *outdata, int natom, char *resid);
+int  ConvertDistanceToBin(REAL dist);
+int  GotAtom(ATOM *outdata, int natom, char *resid);
 void FillAtom(ATOM *outdata, int natom, int pos, char *resid,
               char *resnam, char *properties,
               int DistRange, BOOL SwapProp);
@@ -207,8 +205,8 @@ BOOL ParseCmdLine(int argc, char **argv, char *PatFile, char *StrucFile,
    argc--;
    argv++;
    
-   PatFile[0]  = StrucFile[0] = outfile[0] = '\0';
-   *invert = FALSE;
+   PatFile[0] = StrucFile[0] = outfile[0] = '\0';
+   *invert    = FALSE;
    
    while(argc)
    {
@@ -328,13 +326,13 @@ void MatchFiles(FILE *out, FILE *fp_pat, FILE *fp_struc, BOOL invert)
 */
 DATA *ReadDataAndCreateMatrix(FILE *fp, int *outnatom)
 {
-   int  maxrec   = 0,
-        i        = 0;
-   DATA *outdata = NULL;
-   char buffer[MAXBUFF];
+   int  maxrec    = 0,
+        i         = 0;
+   DATA *outdata  = NULL;
    INDATA *indata = NULL,
           *ini    = NULL,
           *inj    = NULL;
+   char buffer[MAXBUFF];
    
    *outnatom = 0;
 
@@ -408,9 +406,7 @@ DATA *ReadDataAndCreateMatrix(FILE *fp, int *outnatom)
 distance matrix\n");
             exit(1);
          }
-         
       }
-      
    }
 
    FREELIST(indata, INDATA);
@@ -574,8 +570,8 @@ void FillAtom(ATOM *outdata, int natom, int pos,  char *resid,
 void DoLesk(FILE *out, int npat, DATA *pat, int nstruc, DATA *struc,
             BOOL invert)
 {
-   ATOM *PatAtom = NULL,
-        *StrucAtom = NULL;
+   ATOM *PatAtom       = NULL,
+        *StrucAtom     = NULL;
    int  NPatAtom       = 0,
         NStrucAtom     = 0,
         PrevPatAtoms   = 0,
@@ -785,7 +781,7 @@ void PrintBestMatch(FILE *out,
                     ATOM *StrucAtom, int NStrucAtom)
 {
    int  j,
-        best = -1;
+        best      = -1;
    REAL score, 
         BestScore = 0.0;
 

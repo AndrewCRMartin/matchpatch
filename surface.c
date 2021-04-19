@@ -166,6 +166,7 @@ int main(int argc, char **argv)
                   FREELIST(interest, PDB);
                }
             }
+
             FREELIST(pdb, PDB);
             if(in!=stdin)
                fclose(in);
@@ -249,47 +250,6 @@ BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
 
 
 /************************************************************************/
-/*>BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
-                    BOOL *doSurface)
-   -----------------------------------------------------------------------
-   Read the command line
-
-   18.11.93 Original   By: ACRM
-   19.11.93 Added doSurface parameter and flag
-*/
-BOOL ReadCmdLine(int argc, char **argv, char *pdbfile, char *limitfile,
-                 BOOL *doSurface)
-{
-   limitfile[0] = '\0';
-
-   *doSurface = TRUE;
-
-   argc--; argv++;
-
-   if(!strcmp(argv[0], "-h"))
-      return(FALSE);
-   
-   while(argc>1)
-   {
-      if(argv[0][0] == '-')
-      {
-         switch(argv[0][1])
-         {
-	 default:
-            return(FALSE);
-         }
-      }
-      argc--; argv++;
-   }
-
-   if(argc != 1) return(FALSE);
-
-   strcpy(pdbfile,argv[0]);
-   return(TRUE);
-}
-
-
-/************************************************************************/
 /*>PDB *FindSurfaceAtoms(PDB *pdb)
    -------------------------------
    Identifies surface atoms using a simple grid search along x, y and z
@@ -307,12 +267,9 @@ PDB *FindSurfaceAtoms(PDB *pdb)
    PDB  *surface = NULL,
         *p,
         *q;
-   REAL xmin, xmax,
-        ymin, ymax,
-        zmin, zmax,
-        x,
-        y,
-        z;
+   REAL xmin, xmax, x,
+        ymin, ymax, y,
+        zmin, zmax, z;
 
    fprintf(stderr,"Finding surface atoms using %f Angstrom grid\n",
            (double)GRID);
@@ -723,7 +680,8 @@ void PrintInterestingResidues(FILE *out, PDB *interest)
 void SetPropertyString(PDB *p, char *properties)
 {
    int i;
-   
+
+   /* Initialize the property bitstring                                 */
    for(i=0; i<MAXPROPERTIES; i++)
       properties[i] = '0';
    properties[MAXPROPERTIES] = '\0';
@@ -829,8 +787,8 @@ PDB *SelectRanges(PDB *pdb, char *limitfile)
    FILE *fp;
    PDB  *start,
         *stop,
-        *p = NULL,
-        *q = NULL,
+        *p      = NULL,
+        *q      = NULL,
         *outpdb = NULL;
    char buffer[MAXBUFF],
         spec1[16],
