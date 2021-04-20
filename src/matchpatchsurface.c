@@ -96,9 +96,9 @@
 int  main(int argc, char **argv);
 BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
                   char *limitfile, BOOL *doSurface, BOOL *doMatrix,
-                  BOOL *verbose);
+                  BOOL *philphob, BOOL *verbose);
 PDB *FindSurfaceAtoms(PDB *pdb, BOOL verbose);
-PDB *FindAtomsOfInterest(PDB *surface, BOOL verbose);
+PDB *FindAtomsOfInterest(PDB *surface, BOOL philphob, BOOL verbose);
 void DoDistMatrix(FILE *out, PDB *interest);
 void PrintInterestingResidues(FILE *out, PDB *interest);
 void Usage(void);
@@ -126,14 +126,15 @@ int main(int argc, char **argv)
         limitfile[MAXBUFF];
    BOOL doSurface = TRUE,
         doMatrix  = FALSE,
-        verbose   = FALSE;
+        verbose   = FALSE,
+        philphob  = TRUE;
    FILE *in       = stdin,
         *out      = stdout;
    int  natoms;
    
 
    if(ParseCmdLine(argc, argv, infile, outfile, limitfile, &doSurface,
-                   &doMatrix, &verbose))
+                   &doMatrix, &philphob, &verbose))
    {
       if(blOpenStdFiles(infile, outfile, &in, &out))
       {
@@ -149,7 +150,8 @@ int main(int argc, char **argv)
                else
                   surf = surface;
                
-               if((interest = FindAtomsOfInterest(surf, verbose)) != NULL)
+               if((interest = FindAtomsOfInterest(surf, philphob, verbose))
+                  != NULL)
                {
                   if(surf != surface)
                      FREELIST(surf, PDB);
@@ -199,13 +201,14 @@ int main(int argc, char **argv)
 */
 BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
                   char *limitfile, BOOL *doSurface, BOOL *doMatrix,
-                  BOOL *verbose)
+                  BOOL *philphob, BOOL *verbose)
 {
    argc--;
    argv++;
    
    infile[0]  = outfile[0] = limitfile[0] = '\0';
    *doSurface = TRUE;
+   *philphob  = TRUE;
    *verbose   = FALSE;
    *doMatrix  = FALSE;
    
@@ -224,6 +227,9 @@ BOOL ParseCmdLine(int argc, char **argv, char *infile, char *outfile,
             break;
 	 case 'm':
             *doMatrix = TRUE;
+            break;
+	 case 'n':
+            *philphob = FALSE;
             break;
 	 case 'v':
             *verbose = TRUE;
@@ -505,8 +511,8 @@ PDB *FindSurfaceAtoms(PDB *pdb, BOOL verbose)
 
 
 /************************************************************************/
-/*>PDB *FindAtomsOfInterest(PDB *surface, BOOL verbose)
-   ----------------------------------------------------
+/*>PDB *FindAtomsOfInterest(PDB *surface, BOOL philphob, BOOL verbose)
+   -------------------------------------------------------------------
    Searches a PDB linked list for all charged atoms and returns a PDB 
    linked list containing only those atoms.
    This could be improved to read the atoms of interest from a file
@@ -515,9 +521,10 @@ PDB *FindSurfaceAtoms(PDB *pdb, BOOL verbose)
 
    18.11.93 Original   By: ACRM
    22.11.93 Added aromatics
-   19.05.94 Added phosphate for DNA; added verbose
+   19.05.94 Added phosphate for DNA
+   20.04.21 Added philphob and verbose
 */
-PDB *FindAtomsOfInterest(PDB *surface, BOOL verbose)
+PDB *FindAtomsOfInterest(PDB *surface, BOOL philphob, BOOL verbose)
 {
    PDB *interest = NULL,
        *CurrInt  = NULL,
@@ -575,8 +582,46 @@ PDB *FindAtomsOfInterest(PDB *surface, BOOL verbose)
          p->occ = 1.0;
       if(!strncmp(p->resnam,"TRP",3) && !strncmp(p->atnam,"CH",2))
          p->occ = 1.0;
+      if(!strncmp(p->resnam,"HIS",3) && !strncmp(p->atnam,"ND1",3))
+         p->occ = 1.0;
+      if(!strncmp(p->resnam,"HIS",3) && !strncmp(p->atnam,"NE2",3))
+         p->occ = 1.0;
       if(!strncmp(p->atnam,"P ",2))
          p->occ = 1.0;
+
+      if(philphob)
+      {
+         /* Hydrophilic                                                 */
+         if(!strncmp(p->resnam,"ASN",3) && !strncmp(p->atnam,"OD1",3))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"ASN",3) && !strncmp(p->atnam,"ND2",3))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"GLN",3) && !strncmp(p->atnam,"OE1",3))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"GLN",3) && !strncmp(p->atnam,"NE1",3))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"SER",3) && !strncmp(p->atnam,"OG",2))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"THR",3) && !strncmp(p->atnam,"OG1",3))
+            p->occ = 1.0;
+         /* Hydrophobic                                                 */
+         if(!strncmp(p->resnam,"ILE",3) && !strncmp(p->atnam,"CB",2))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"ILE",3) && !strncmp(p->atnam,"CG",2))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"ILE",3) && !strncmp(p->atnam,"CD",2))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"LEU",3) && !strncmp(p->atnam,"CB",2))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"LEU",3) && !strncmp(p->atnam,"CG",2))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"LEU",3) && !strncmp(p->atnam,"CD",2))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"VAL",3) && !strncmp(p->atnam,"CB",2))
+            p->occ = 1.0;
+         if(!strncmp(p->resnam,"VAL",3) && !strncmp(p->atnam,"CG",2))
+            p->occ = 1.0;
+      }
    }
 
    /* Now we copy this list, but include only one entry for each residue*/
@@ -702,7 +747,7 @@ void PrintInterestingResidues(FILE *out, PDB *interest)
 
       SetPropertyString(p, properties);
       
-      fprintf(out, "%s %s %8.3f %8.3f %8.3f %s\n",
+      fprintf(out, "%s %-5s %8.3f %8.3f %8.3f %s\n",
               p->resnam, resid, p->x, p->y, p->z,
               properties);
    }
@@ -787,11 +832,13 @@ void Usage(void)
    fprintf(stderr,"\nmatchpatchsurface V2.0 (c) 1993-2021 SciTech Software / \
 abYinformatics\n");
    fprintf(stderr,"\nUsage: matchpatchsurface [-v][-l limitsfile][-s]\
-[-m] [file.pdb [file.out]]\n");
+[-m][-n] [file.pdb [file.out]]\n");
    fprintf(stderr,"       -v Verbose\n");
    fprintf(stderr,"       -l specify limits file\n");
    fprintf(stderr,"       -s assume all residues are surface\n");
    fprintf(stderr,"       -m produce a distance matrix (for match V1)\n");
+   fprintf(stderr,"       -n don't include features for \
+hydrophilics/hydrophobics\n");
    fprintf(stderr,"\nSearch for surface charged and aromatic residues \
 and output their\n");
    fprintf(stderr,"coordinates and properties or create a \
