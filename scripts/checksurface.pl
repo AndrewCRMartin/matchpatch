@@ -4,6 +4,7 @@ use strict;
 
 my $chain    = defined($::chain)?$::chain:'A';
 my $minMatch = defined($::min)?$::min:3;
+my $probe    = defined($::probe)?$::probe:1.4;
 
 UsageDie($chain, $minMatch) if((scalar(@ARGV) < 2) || defined($::h));
 
@@ -14,7 +15,8 @@ my $tmpDir  = "/var/tmp/checksurface_" . $$ . time();
 die "Can't create $tmpDir directory" if(! -d $tmpDir);
 
 # Get a list of surface residues from the template PDB file
-my @templateSurfaceResidues = GetSurfaceResidues($tmpDir, $templatePdbFile);
+my @templateSurfaceResidues =
+    GetSurfaceResidues($tmpDir, $templatePdbFile, $probe);
 
 foreach my $targetPDBFile (@ARGV)
 {
@@ -81,9 +83,9 @@ sub ExtractPatch
 
 sub GetSurfaceResidues
 {
-    my($tmpDir, $templatePdbFile) = @_;
+    my($tmpDir, $templatePdbFile, $probe) = @_;
     
-    `pdbhetstrip $templatePdbFile | pdbsolv -x -r $tmpDir/resSolv.dat > $tmpDir/access.pdb`;
+    `pdbhetstrip $templatePdbFile | pdbsolv -p $probe -x -r $tmpDir/resSolv.dat > $tmpDir/access.pdb`;
     my @templateSurfaceResidues = ();
     if(open(my $fp, '<', "$tmpDir/resSolv.dat"))
     {
